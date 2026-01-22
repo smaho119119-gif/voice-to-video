@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Composition } from "remotion";
 import { MainVideo, VideoProps } from "./MainVideo";
 
@@ -21,7 +22,8 @@ export const RemotionRoot: React.FC = () => {
         <>
             <Composition
                 id="MainVideo"
-                component={MainVideo}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                component={MainVideo as any}
                 durationInFrames={150} // 5 seconds at 30fps base
                 fps={30}
                 width={1920}
