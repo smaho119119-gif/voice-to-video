@@ -2,8 +2,9 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Mic, Square, Loader2, Play, Trash2 } from "lucide-react";
+import { Mic, Square, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Waveform } from "./Waveform";
 
 interface AudioRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
@@ -18,11 +19,13 @@ export function AudioRecorder({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = audioStream;
+      mediaRecorderRef.current = new MediaRecorder(audioStream);
       chunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (e) => {
@@ -36,9 +39,10 @@ export function AudioRecorder({
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
         onRecordingComplete(blob);
-        
+
         // Stop all tracks
-        stream.getTracks().forEach(track => track.stop());
+        streamRef.current?.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+        streamRef.current = null;
       };
 
       mediaRecorderRef.current.start();
@@ -71,6 +75,12 @@ export function AudioRecorder({
         </span>
       </div>
 
+      {isRecording && (
+        <div className="w-full px-4 mb-2 h-20">
+          <Waveform stream={streamRef.current} isRecording={isRecording} />
+        </div>
+      )}
+
       {!audioUrl ? (
         <Button
           size="lg"
@@ -80,7 +90,7 @@ export function AudioRecorder({
           disabled={isProcessing}
         >
           {isRecording ? <Square className="w-8 h-8" /> : <Mic className="w-8 h-8" />}
-          <span className="text-xs font-normal">{isRecording ? "停止" : "録音失敗"}</span>
+          <span className="text-xs font-normal">{isRecording ? "停止" : "録音開始"}</span>
         </Button>
       ) : (
         <div className="w-full space-y-4">

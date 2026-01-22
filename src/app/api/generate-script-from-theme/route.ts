@@ -1,0 +1,112 @@
+import { NextRequest, NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+export async function POST(req: NextRequest) {
+    if (!process.env.GEMINI_API_KEY) {
+        return NextResponse.json(
+            { error: "Gemini API Key is missing" },
+            { status: 500 }
+        );
+    }
+
+    try {
+        const { theme, targetDuration = 60, style = "educational" } = await req.json();
+
+        if (!theme) {
+            return NextResponse.json(
+                { error: "Theme is required" },
+                { status: 400 }
+            );
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+        const styleGuides: Record<string, string> = {
+            educational: "教育的で分かりやすい解説スタイル。専門用語は簡単に説明を加える。",
+            entertainment: "エンターテイメント性が高く、視聴者を楽しませるスタイル。",
+            news: "ニュース番組のような客観的で簡潔なスタイル。",
+            storytelling: "物語形式で引き込むストーリーテリングスタイル。",
+            tutorial: "ステップバイステップで説明するチュートリアルスタイル。"
+        };
+
+        const sceneCount = Math.max(3, Math.min(10, Math.ceil(targetDuration / 10)));
+
+        const prompt = `
+あなたはプロの動画ディレクター兼脚本家です。以下のテーマに基づいて、ショート動画の完全な台本を作成してください。
+
+【テーマ】
+${theme}
+
+【スタイル】
+${styleGuides[style] || styleGuides.educational}
+
+【要件】
+- 目標時間: 約${targetDuration}秒（${sceneCount}シーン程度）
+- 各シーンは5〜10秒程度
+- ネイティブな日本語で自然に話す台本
+- 視聴者の興味を引くオープニング
+- 明確な結論やまとめで締める
+
+出力は必ず以下のJSON形式にしてください。
+{
+  "title": "動画のタイトル（キャッチーで興味を引くもの）",
+  "description": "動画の概要説明（50文字以内）",
+  "scenes": [
+    {
+      "scene_index": 1,
+      "duration": 5,
+      "avatar_script": "アバターが話す台本（自然な日本語、句読点や間を意識）",
+      "subtitle": "画面に表示する字幕（簡潔に）",
+      "image_prompt": "背景画像生成用の詳細な英語プロンプト（高品質、16:9、映画的）",
+      "emotion": "アバターの表情や話し方（neutral/happy/serious/excited/thoughtful）",
+      "sound_effects": [
+        {
+          "type": "効果音の種類（ambient/action/transition/emotion）",
+          "keyword": "効果音を検索するための英語キーワード（例: keyboard typing, success chime, whoosh）",
+          "timing": "開始タイミング（start/middle/end/throughout）",
+          "volume": 0.3
+        }
+      ]
+    }
+  ],
+  "total_duration": 合計秒数,
+  "tags": ["関連タグ1", "関連タグ2", "関連タグ3"]
+}
+
+効果音の種類ガイド:
+- ambient: 環境音（オフィス、自然、カフェなど）
+- action: アクション音（タイピング、クリック、ページめくりなど）
+- transition: 場面転換音（whoosh, swipe, pop）
+- emotion: 感情を表す音（success chime, fail buzzer, suspense）
+
+各シーンに1-2個の効果音を必ず含めてください。
+
+注意:
+- avatar_scriptは声に出して読んで自然な日本語にすること
+- 「えー」「まあ」などのフィラーは適度に入れても良い
+- image_promptは英語で、cinematic, high quality, 4K, detailed などを含める
+`;
+
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: {
+                responseMimeType: "application/json",
+            }
+        });
+
+        const scriptData = JSON.parse(result.response.text());
+
+        return NextResponse.json({
+            success: true,
+            script: scriptData
+        });
+    } catch (error: any) {
+        console.error("Theme Script Generation Error:", error);
+        return NextResponse.json(
+            { error: "Failed to generate script from theme", details: error.message },
+            { status: 500 }
+        );
+    }
+}

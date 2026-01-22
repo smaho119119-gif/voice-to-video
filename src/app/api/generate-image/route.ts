@@ -44,9 +44,10 @@ export async function POST(req: NextRequest) {
         // Find the generated image in the parts
         const imagePart = parts.find((p: any) => p.inlineData);
 
-        if (imagePart) {
+        if (imagePart?.inlineData?.data) {
             const base64Data = imagePart.inlineData.data;
-            const imageUrl = `data:${imagePart.inlineData.mimeType};base64,${base64Data}`;
+            const mimeType = imagePart.inlineData.mimeType || "image/png";
+            const imageUrl = `data:${mimeType};base64,${base64Data}`;
             return NextResponse.json({ imageUrl });
         }
 
