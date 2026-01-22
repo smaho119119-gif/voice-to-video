@@ -47,6 +47,9 @@ type InputMode = "voice" | "theme" | "url";
 const URL_HISTORY_KEY = "video-generator-url-history";
 const MAX_URL_HISTORY = 10;
 
+// TTS Provider types
+type TTSProvider = "google" | "elevenlabs";
+
 // Avatar characters with personalities
 interface AvatarCharacter {
   id: string;
@@ -54,9 +57,20 @@ interface AvatarCharacter {
   gender: "female" | "male";
   emoji: string;
   personality: string;
-  voiceId: string;
+  googleVoiceId: string;
+  elevenLabsVoiceId: string;
   color: string;
 }
+
+// ElevenLabs Japanese voice IDs (natural, breathing sounds)
+const ELEVENLABS_VOICES = {
+  female1: "EXAVITQu4vr4xnSDxMaL", // Bella - warm female
+  female2: "21m00Tcm4TlvDq8ikWAM", // Rachel - calm female
+  female3: "AZnzlk1XvdvUeBnXmlld", // Domi - young energetic female
+  male1: "VR6AewLTigWG4xSOukaG",   // Arnold - confident male
+  male2: "pNInz6obpgDQGcFmaJgB",   // Adam - deep male
+  male3: "yoZ06aMxZJJ28mfd3POQ",   // Josh - friendly male
+};
 
 const AVATAR_CHARACTERS: AvatarCharacter[] = [
   {
@@ -65,7 +79,8 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     gender: "female",
     emoji: "👩‍💼",
     personality: "明るく親しみやすいお姉さん。丁寧でわかりやすい説明が得意。",
-    voiceId: "ja-JP-Neural2-C",
+    googleVoiceId: "ja-JP-Neural2-C",
+    elevenLabsVoiceId: ELEVENLABS_VOICES.female1,
     color: "from-pink-400 to-rose-500",
   },
   {
@@ -74,7 +89,8 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     gender: "female",
     emoji: "🌸",
     personality: "落ち着いた大人の女性。上品で知的な語り口が特徴。",
-    voiceId: "ja-JP-Wavenet-A",
+    googleVoiceId: "ja-JP-Wavenet-A",
+    elevenLabsVoiceId: ELEVENLABS_VOICES.female2,
     color: "from-purple-400 to-pink-500",
   },
   {
@@ -83,7 +99,8 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     gender: "female",
     emoji: "💫",
     personality: "元気いっぱいのアイドル風。ポップでキュートな話し方。",
-    voiceId: "ja-JP-Wavenet-B",
+    googleVoiceId: "ja-JP-Wavenet-B",
+    elevenLabsVoiceId: ELEVENLABS_VOICES.female3,
     color: "from-cyan-400 to-blue-500",
   },
   {
@@ -92,7 +109,8 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     gender: "male",
     emoji: "👨‍🏫",
     personality: "頼れる先生タイプ。落ち着いて論理的に説明する。",
-    voiceId: "ja-JP-Neural2-B",
+    googleVoiceId: "ja-JP-Neural2-B",
+    elevenLabsVoiceId: ELEVENLABS_VOICES.male1,
     color: "from-blue-400 to-indigo-500",
   },
   {
@@ -101,7 +119,8 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     gender: "male",
     emoji: "🎤",
     personality: "若くてエネルギッシュ。テンション高めでノリが良い。",
-    voiceId: "ja-JP-Neural2-D",
+    googleVoiceId: "ja-JP-Neural2-D",
+    elevenLabsVoiceId: ELEVENLABS_VOICES.male3,
     color: "from-green-400 to-emerald-500",
   },
   {
@@ -110,7 +129,8 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     gender: "male",
     emoji: "📚",
     personality: "物静かな知識人。深みのある声で説得力がある。",
-    voiceId: "ja-JP-Wavenet-C",
+    googleVoiceId: "ja-JP-Wavenet-C",
+    elevenLabsVoiceId: ELEVENLABS_VOICES.male2,
     color: "from-amber-400 to-orange-500",
   },
 ];
@@ -150,6 +170,7 @@ export default function Home() {
   const [step, setStep] = useState<"select" | "record" | "theme" | "url" | "edit" | "generating" | "complete" | "history">("select");
   const [currentUser] = useState<string>("00000000-0000-0000-0000-000000000001");
   const [selectedAvatar, setSelectedAvatar] = useState<AvatarCharacter>(AVATAR_CHARACTERS[0]);
+  const [ttsProvider, setTtsProvider] = useState<TTSProvider>("google");
   const [videoHistory, setVideoHistory] = useState<DBVideo[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
@@ -340,7 +361,11 @@ export default function Home() {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
             text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
-            config: { provider: "google", voice: selectedAvatar.voiceId, speed: 1.0 }
+            config: {
+              provider: ttsProvider,
+              voice: ttsProvider === "elevenlabs" ? selectedAvatar.elevenLabsVoiceId : selectedAvatar.googleVoiceId,
+              speed: ttsProvider === "google" ? 1.0 : undefined
+            }
           });
           updatedScenes[i].audioUrl = audioRes.data.audioUrl;
 
@@ -440,7 +465,11 @@ export default function Home() {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
             text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
-            config: { provider: "google", voice: selectedAvatar.voiceId, speed: 1.0 }
+            config: {
+              provider: ttsProvider,
+              voice: ttsProvider === "elevenlabs" ? selectedAvatar.elevenLabsVoiceId : selectedAvatar.googleVoiceId,
+              speed: ttsProvider === "google" ? 1.0 : undefined
+            }
           });
           updatedScenes[i].audioUrl = audioRes.data.audioUrl;
 
@@ -538,7 +567,11 @@ export default function Home() {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
             text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
-            config: { provider: "google", voice: selectedAvatar.voiceId, speed: 1.0 }
+            config: {
+              provider: ttsProvider,
+              voice: ttsProvider === "elevenlabs" ? selectedAvatar.elevenLabsVoiceId : selectedAvatar.googleVoiceId,
+              speed: ttsProvider === "google" ? 1.0 : undefined
+            }
           });
           updatedScenes[i].audioUrl = audioRes.data.audioUrl;
 
@@ -635,6 +668,41 @@ export default function Home() {
           <CardContent className="space-y-6">
             {step === "select" && (
               <div className="space-y-6 animate-in fade-in">
+                {/* TTS Provider Selection */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🔊</span>
+                    <div>
+                      <p className="font-medium text-sm">音声エンジン</p>
+                      <p className="text-[10px] text-slate-500">
+                        {ttsProvider === "google" ? "無料枠: 100万文字/月" : "無料枠: 1万文字/月（高品質）"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 bg-white rounded-lg p-1 border">
+                    <button
+                      onClick={() => setTtsProvider("google")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        ttsProvider === "google"
+                          ? "bg-blue-500 text-white"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      Google TTS
+                    </button>
+                    <button
+                      onClick={() => setTtsProvider("elevenlabs")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        ttsProvider === "elevenlabs"
+                          ? "bg-purple-500 text-white"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      ElevenLabs ✨
+                    </button>
+                  </div>
+                </div>
+
                 {/* Avatar/Character Selection - Compact 6-column */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
