@@ -125,6 +125,19 @@ function normalizeUrl(url: string): string {
   return `https://${trimmed}`;
 }
 
+// Get audio duration from base64 data URL
+async function getAudioDuration(audioUrl: string): Promise<number> {
+  return new Promise((resolve) => {
+    const audio = new Audio(audioUrl);
+    audio.addEventListener("loadedmetadata", () => {
+      resolve(audio.duration);
+    });
+    audio.addEventListener("error", () => {
+      resolve(5); // Default 5 seconds on error
+    });
+  });
+}
+
 export default function Home() {
   const [inputMode, setInputMode] = useState<InputMode>("theme");
   const [themeText, setThemeText] = useState("");
@@ -321,7 +334,8 @@ export default function Home() {
       }
       setGenerationProgress(55);
 
-      // 3. Generate Audio with Google TTS
+      // 3. Generate Audio with Google TTS and calculate duration
+      console.log("🎤 Using voice:", selectedAvatar.voiceId, "Character:", selectedAvatar.name);
       for (let i = 0; i < updatedScenes.length; i++) {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
@@ -329,6 +343,11 @@ export default function Home() {
             config: { provider: "google", voice: selectedAvatar.voiceId, speed: 1.0 }
           });
           updatedScenes[i].audioUrl = audioRes.data.audioUrl;
+
+          // Get actual audio duration and update scene duration
+          const audioDuration = await getAudioDuration(audioRes.data.audioUrl);
+          updatedScenes[i].duration = Math.ceil(audioDuration) + 1; // Add 1 second padding
+          console.log(`Scene ${i + 1}: Audio duration = ${audioDuration}s, Scene duration = ${updatedScenes[i].duration}s`);
         } catch (err) {
           console.error(`Audio generation failed for scene ${i + 1}:`, err);
         }
@@ -415,7 +434,8 @@ export default function Home() {
       }
       setGenerationProgress(55);
 
-      // 3. Generate Audio with TTS
+      // 3. Generate Audio with TTS and calculate duration
+      console.log("🎤 Using voice:", selectedAvatar.voiceId, "Character:", selectedAvatar.name);
       for (let i = 0; i < updatedScenes.length; i++) {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
@@ -423,6 +443,11 @@ export default function Home() {
             config: { provider: "google", voice: selectedAvatar.voiceId, speed: 1.0 }
           });
           updatedScenes[i].audioUrl = audioRes.data.audioUrl;
+
+          // Get actual audio duration and update scene duration
+          const audioDuration = await getAudioDuration(audioRes.data.audioUrl);
+          updatedScenes[i].duration = Math.ceil(audioDuration) + 1; // Add 1 second padding
+          console.log(`Scene ${i + 1}: Audio duration = ${audioDuration}s, Scene duration = ${updatedScenes[i].duration}s`);
         } catch (err) {
           console.error(`Audio generation failed for scene ${i + 1}:`, err);
         }
@@ -507,7 +532,8 @@ export default function Home() {
       setVideoConfig({ ...config, scenes: updatedScenes });
       setGenerationProgress(65);
 
-      // 3. Generate Audio with TTS (OpenAI)
+      // 3. Generate Audio with TTS and calculate duration
+      console.log("🎤 Using voice:", selectedAvatar.voiceId, "Character:", selectedAvatar.name);
       for (let i = 0; i < updatedScenes.length; i++) {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
@@ -515,6 +541,11 @@ export default function Home() {
             config: { provider: "google", voice: selectedAvatar.voiceId, speed: 1.0 }
           });
           updatedScenes[i].audioUrl = audioRes.data.audioUrl;
+
+          // Get actual audio duration and update scene duration
+          const audioDuration = await getAudioDuration(audioRes.data.audioUrl);
+          updatedScenes[i].duration = Math.ceil(audioDuration) + 1; // Add 1 second padding
+          console.log(`Scene ${i + 1}: Audio duration = ${audioDuration}s, Scene duration = ${updatedScenes[i].duration}s`);
         } catch (err) {
           console.error(`Audio generation failed for scene ${i + 1}:`, err);
         }
