@@ -30,6 +30,7 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [step, setStep] = useState<"record" | "edit" | "generating" | "complete">("record");
+  const [currentUser, setCurrentUser] = useState<string>("test_user");
 
   const handleRecordingComplete = async (audioBlob: Blob) => {
     setIsProcessing(true);
@@ -98,6 +99,18 @@ export default function Home() {
           <p className="text-slate-500">
             あなたの声を、AIアバターが解説する動画に変換します。
           </p>
+          <div className="flex justify-center gap-4 mt-4 text-xs">
+            <Button variant="ghost" size="sm" onClick={async () => {
+              const res = await axios.get("/api/setup-demo");
+              alert(res.data.message);
+            }} className="text-blue-600 hover:text-blue-700">
+              🛠 デモユーザー(test/NSX)を初期設定する
+            </Button>
+            <div className="bg-white px-3 py-1 rounded-full border shadow-sm flex items-center gap-2">
+              <span className="text-slate-400">ログイン中:</span>
+              <span className="font-bold">{currentUser}</span>
+            </div>
+          </div>
         </div>
 
         <Card>
