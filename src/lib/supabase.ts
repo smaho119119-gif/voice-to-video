@@ -5,6 +5,200 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// Storage bucket names
+const STORAGE_BUCKETS = {
+    images: "video-images",
+    audio: "video-audio",
+};
+
+// Generate unique file name
+function generateFileName(prefix: string, extension: string): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    return `${prefix}/${timestamp}-${random}.${extension}`;
+}
+
+// Upload image to Supabase Storage
+export async function uploadImageToStorage(
+    base64Data: string,
+    userId: string
+): Promise<string | null> {
+    try {
+        // Remove data URL prefix if present
+        const base64Clean = base64Data.replace(/^data:image\/\w+;base64,/, "");
+        const buffer = Buffer.from(base64Clean, "base64");
+
+        const fileName = generateFileName(`user-${userId}`, "png");
+
+        const { data, error } = await supabase.storage
+            .from(STORAGE_BUCKETS.images)
+            .upload(fileName, buffer, {
+                contentType: "image/png",
+                cacheControl: "3600",
+                upsert: false,
+            });
+
+        if (error) {
+            console.error("Image upload error:", error);
+            return null;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+            .from(STORAGE_BUCKETS.images)
+            .getPublicUrl(data.path);
+
+        return urlData.publicUrl;
+    } catch (error) {
+        console.error("Error uploading image:", error);
+        return null;
+    }
+}
+
+// Upload audio to Supabase Storage
+export async function uploadAudioToStorage(
+    base64Data: string,
+    userId: string,
+    format: string = "mp3"
+): Promise<string | null> {
+    try {
+        // Remove data URL prefix if present
+        const base64Clean = base64Data.replace(/^data:audio\/[^;]+;base64,/, "");
+        const buffer = Buffer.from(base64Clean, "base64");
+
+        const fileName = generateFileName(`user-${userId}`, format);
+        const contentType = format === "wav" ? "audio/wav" : "audio/mpeg";
+
+        const { data, error } = await supabase.storage
+            .from(STORAGE_BUCKETS.audio)
+            .upload(fileName, buffer, {
+                contentType,
+                cacheControl: "3600",
+                upsert: false,
+            });
+
+        if (error) {
+            console.error("Audio upload error:", error);
+            return null;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+            .from(STORAGE_BUCKETS.audio)
+            .getPublicUrl(data.path);
+
+        return urlData.publicUrl;
+    } catch (error) {
+        console.error("Error uploading audio:", error);
+        return null;
+    }
+}
+
+// Delete file from storage
+export async function deleteFromStorage(
+    bucket: "images" | "audio",
+    filePath: string
+): Promise<boolean> {
+    try {
+        const bucketName = STORAGE_BUCKETS[bucket];
+        const { error } = await supabase.storage
+            .from(bucketName)
+            .remove([filePath]);
+
+        if (error) {
+            console.error("Delete error:", error);
+            return false;
+        }
+        return true;
+    } catch (error) {
+        console.error("Error deleting file:", error);
+        return false;
+    }
+}
+
+// URL History (stored in Supabase instead of localStorage)
+export interface URLHistoryItem {
+    id: string;
+    user_id: string;
+    url: string;
+    created_at: string;
+}
+
+export async function saveUrlToHistory(userId: string, url: string): Promise<void> {
+    try {
+        // Check if URL already exists for this user
+        const { data: existing } = await supabase
+            .from("url_history")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("url", url)
+            .single();
+
+        if (existing) {
+            // Update timestamp to move to top
+            await supabase
+                .from("url_history")
+                .update({ created_at: new Date().toISOString() })
+                .eq("id", existing.id);
+        } else {
+            // Insert new URL
+            await supabase
+                .from("url_history")
+                .insert({ user_id: userId, url });
+
+            // Keep only latest 10 URLs per user
+            const { data: allUrls } = await supabase
+                .from("url_history")
+                .select("id")
+                .eq("user_id", userId)
+                .order("created_at", { ascending: false });
+
+            if (allUrls && allUrls.length > 10) {
+                const idsToDelete = allUrls.slice(10).map(u => u.id);
+                await supabase
+                    .from("url_history")
+                    .delete()
+                    .in("id", idsToDelete);
+            }
+        }
+    } catch (error) {
+        console.error("Error saving URL to history:", error);
+    }
+}
+
+export async function getUrlHistory(userId: string): Promise<string[]> {
+    try {
+        const { data, error } = await supabase
+            .from("url_history")
+            .select("url")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+        if (error) {
+            console.error("Error fetching URL history:", error);
+            return [];
+        }
+
+        return data?.map(item => item.url) || [];
+    } catch (error) {
+        console.error("Error in getUrlHistory:", error);
+        return [];
+    }
+}
+
+export async function deleteUrlFromHistory(userId: string, url: string): Promise<void> {
+    try {
+        await supabase
+            .from("url_history")
+            .delete()
+            .eq("user_id", userId)
+            .eq("url", url);
+    } catch (error) {
+        console.error("Error deleting URL from history:", error);
+    }
+}
+
 // Types for database
 export interface DBVideo {
     id: string;

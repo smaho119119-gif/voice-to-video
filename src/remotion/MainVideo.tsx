@@ -350,9 +350,13 @@ const SceneComponent: React.FC<SceneComponentProps> = ({ scene, sceneIndex, isVe
                 ...(frame > totalFrames - transitionDuration ? transitionOutStyle : {}),
             }}
         >
-            {/* Narration Audio */}
-            {scene.audioUrl && (
-                <Audio src={scene.audioUrl} volume={VOLUME_LEVELS.narration} />
+            {/* Narration Audio - with validation */}
+            {scene.audioUrl && scene.audioUrl.length > 0 && (
+                <Audio
+                    src={scene.audioUrl}
+                    volume={VOLUME_LEVELS.narration}
+                    onError={(e) => console.error("Audio load error:", e)}
+                />
             )}
 
             {/* Sound Effects */}
@@ -374,11 +378,14 @@ const SceneComponent: React.FC<SceneComponentProps> = ({ scene, sceneIndex, isVe
                     transform: `translate3d(${translateX}px, ${translateY}px, 0) scale(${scale * breathingScale})`
                 }}
             >
-                {scene.imageUrl && (
+                {scene.imageUrl && scene.imageUrl.length > 0 ? (
                     <Img
                         src={scene.imageUrl}
                         className="w-full h-full object-cover"
+                        onError={() => console.error("Image load error:", scene.imageUrl)}
                     />
+                ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900" />
                 )}
             </AbsoluteFill>
 

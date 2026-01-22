@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { uploadImageToStorage } from "@/lib/supabase";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { prompt } = await req.json();
+        const { prompt, userId } = await req.json();
 
         if (!prompt) {
             return NextResponse.json(
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
                 { status: 400 }
             );
         }
+
+        // Default userId if not provided
+        const userIdForStorage = userId || "anonymous";
 
         // Nano Banana Pro (Gemini 3 Pro Image) implementation
         // Using the latest beta features for image generation
@@ -46,6 +50,16 @@ export async function POST(req: NextRequest) {
 
         if (imagePart?.inlineData?.data) {
             const base64Data = imagePart.inlineData.data;
+
+            // Upload to Supabase Storage instead of returning base64
+            const storageUrl = await uploadImageToStorage(base64Data, userIdForStorage);
+
+            if (storageUrl) {
+                return NextResponse.json({ imageUrl: storageUrl });
+            }
+
+            // Fallback to base64 if storage upload fails
+            console.warn("Storage upload failed, falling back to base64");
             const mimeType = imagePart.inlineData.mimeType || "image/png";
             const imageUrl = `data:${mimeType};base64,${base64Data}`;
             return NextResponse.json({ imageUrl });
