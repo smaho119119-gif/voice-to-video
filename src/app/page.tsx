@@ -604,43 +604,44 @@ export default function Home() {
           <CardContent className="space-y-6">
             {step === "select" && (
               <div className="space-y-6 animate-in fade-in">
-                {/* Avatar/Character Selection */}
+                {/* Avatar/Character Selection - Compact 6-column */}
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">🎭</span>
-                    <p className="font-medium text-sm">ナレーターを選択</p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">🎭</span>
+                      <p className="font-medium text-sm">ナレーター</p>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      選択中: <span className="font-bold text-slate-600">{selectedAvatar.name}</span>
+                    </p>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="flex justify-center gap-2">
                     {AVATAR_CHARACTERS.map((avatar) => (
-                      <button
-                        key={avatar.id}
-                        onClick={() => setSelectedAvatar(avatar)}
-                        className={`relative p-4 rounded-xl border-2 transition-all text-left ${
-                          selectedAvatar.id === avatar.id
-                            ? "border-blue-500 bg-blue-50 shadow-md"
-                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                        }`}
-                      >
-                        {selectedAvatar.id === avatar.id && (
-                          <div className="absolute top-2 right-2 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                            <span className="text-white text-xs">✓</span>
-                          </div>
-                        )}
-                        <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${avatar.color} flex items-center justify-center text-2xl mb-2 shadow-sm`}>
+                      <div key={avatar.id} className="flex flex-col items-center gap-1">
+                        <button
+                          onClick={() => setSelectedAvatar(avatar)}
+                          className={`relative w-14 h-14 rounded-full bg-gradient-to-br ${avatar.color} flex items-center justify-center text-2xl shadow-sm transition-all ${
+                            selectedAvatar.id === avatar.id
+                              ? "ring-4 ring-blue-500 ring-offset-2 scale-110"
+                              : "hover:scale-105 opacity-70 hover:opacity-100"
+                          }`}
+                          title={avatar.name}
+                        >
                           {avatar.emoji}
-                        </div>
-                        <p className="font-bold text-sm">{avatar.name}</p>
-                        <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">
-                          {avatar.personality}
-                        </p>
-                        <span className={`inline-block mt-2 text-[10px] px-2 py-0.5 rounded-full ${
-                          avatar.gender === "female"
-                            ? "bg-pink-100 text-pink-600"
-                            : "bg-blue-100 text-blue-600"
-                        }`}>
-                          {avatar.gender === "female" ? "♀ 女性" : "♂ 男性"}
-                        </span>
-                      </button>
+                          {selectedAvatar.id === avatar.id && (
+                            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center border-2 border-white">
+                              <span className="text-white text-[10px]">✓</span>
+                            </div>
+                          )}
+                        </button>
+                        <span className="text-[10px] font-medium text-slate-600">{avatar.name}</span>
+                        <button
+                          onClick={() => alert(`【${avatar.name}】\n${avatar.gender === "female" ? "♀ 女性" : "♂ 男性"}\n\n${avatar.personality}`)}
+                          className="text-[9px] text-blue-500 hover:text-blue-700 hover:underline"
+                        >
+                          詳細
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
