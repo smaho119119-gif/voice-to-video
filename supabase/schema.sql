@@ -1,6 +1,6 @@
--- Users table
+-- Users table (Demo friendly)
 CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
+  id UUID PRIMARY KEY, -- Removed strict auth.users reference for demo/test users
   username TEXT UNIQUE,
   full_name TEXT,
   avatar_url TEXT,
