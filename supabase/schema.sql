@@ -7,6 +7,20 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Add missing columns to profiles if they don't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'username') THEN
+    ALTER TABLE public.profiles ADD COLUMN username TEXT UNIQUE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'full_name') THEN
+    ALTER TABLE public.profiles ADD COLUMN full_name TEXT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'avatar_url') THEN
+    ALTER TABLE public.profiles ADD COLUMN avatar_url TEXT;
+  END IF;
+END $$;
+
 -- Videos table
 CREATE TABLE IF NOT EXISTS public.videos (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -45,9 +59,14 @@ BEGIN
 END $$;
 
 -- Create test user for demo (using a fixed UUID)
-INSERT INTO public.profiles (id, username, full_name)
-VALUES ('00000000-0000-0000-0000-000000000001', 'test_user', 'テストユーザー')
+INSERT INTO public.profiles (id)
+VALUES ('00000000-0000-0000-0000-000000000001')
 ON CONFLICT (id) DO NOTHING;
+
+-- Update test user with optional fields if columns exist
+UPDATE public.profiles
+SET username = 'test_user', full_name = 'テストユーザー'
+WHERE id = '00000000-0000-0000-0000-000000000001' AND username IS NULL;
 
 -- Scenes table (JSON metadata for each scene)
 CREATE TABLE IF NOT EXISTS public.scenes (
