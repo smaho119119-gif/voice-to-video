@@ -21,6 +21,9 @@ interface SoundEffect {
   url?: string;
 }
 
+// Transition types
+type TransitionType = "fade" | "slide" | "zoom" | "wipe";
+
 interface Scene {
   duration: number;
   avatar_script: string;
@@ -29,6 +32,9 @@ interface Scene {
   imageUrl?: string;
   audioUrl?: string;
   sound_effects?: SoundEffect[];
+  emotion?: "neutral" | "happy" | "serious" | "excited" | "thoughtful";
+  transition?: TransitionType;
+  emphasis_words?: string[];
 }
 
 interface BGMConfig {
@@ -36,10 +42,34 @@ interface BGMConfig {
   volume: number;
 }
 
+interface OpeningConfig {
+  enabled: boolean;
+  duration?: number;
+  subtitle?: string;
+}
+
+interface EndingConfig {
+  enabled: boolean;
+  duration?: number;
+  callToAction?: string;
+  channelName?: string;
+}
+
+interface AvatarConfig {
+  enabled: boolean;
+  position?: "left" | "right" | "center";
+  size?: "small" | "medium" | "large";
+  imageUrl?: string;
+}
+
 interface VideoConfig {
   title: string;
   scenes: Scene[];
   bgm?: BGMConfig;
+  aspectRatio: AspectRatio;
+  opening?: OpeningConfig;
+  ending?: EndingConfig;
+  avatar?: AvatarConfig;
 }
 
 type InputMode = "voice" | "theme" | "url";
@@ -48,7 +78,16 @@ const URL_HISTORY_KEY = "video-generator-url-history";
 const MAX_URL_HISTORY = 10;
 
 // TTS Provider types
-type TTSProvider = "google" | "elevenlabs";
+type TTSProvider = "google" | "elevenlabs" | "gemini";
+
+// Aspect Ratio types
+type AspectRatio = "16:9" | "9:16";
+
+// Resolution mappings
+const RESOLUTIONS = {
+  "16:9": { width: 1920, height: 1080 },
+  "9:16": { width: 1080, height: 1920 }
+};
 
 // Avatar characters with personalities
 interface AvatarCharacter {
@@ -59,6 +98,7 @@ interface AvatarCharacter {
   personality: string;
   googleVoiceId: string;
   elevenLabsVoiceId: string;
+  geminiVoiceId: string;
   color: string;
 }
 
@@ -72,6 +112,15 @@ const ELEVENLABS_VOICES = {
   male3: "yoZ06aMxZJJ28mfd3POQ",   // Josh - friendly male
 };
 
+// Gemini 2.0 voice IDs (natural, human-like)
+const GEMINI_VOICES = {
+  female1: "Aoede",   // Natural female
+  female2: "Kore",    // Young female
+  male1: "Charon",    // Calm male
+  male2: "Fenrir",    // Strong male
+  male3: "Puck",      // Bright male
+};
+
 const AVATAR_CHARACTERS: AvatarCharacter[] = [
   {
     id: "yuki",
@@ -81,6 +130,7 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     personality: "明るく親しみやすいお姉さん。丁寧でわかりやすい説明が得意。",
     googleVoiceId: "ja-JP-Neural2-C",
     elevenLabsVoiceId: ELEVENLABS_VOICES.female1,
+    geminiVoiceId: GEMINI_VOICES.female1,
     color: "from-pink-400 to-rose-500",
   },
   {
@@ -91,6 +141,7 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     personality: "落ち着いた大人の女性。上品で知的な語り口が特徴。",
     googleVoiceId: "ja-JP-Wavenet-A",
     elevenLabsVoiceId: ELEVENLABS_VOICES.female2,
+    geminiVoiceId: GEMINI_VOICES.female1,
     color: "from-purple-400 to-pink-500",
   },
   {
@@ -101,6 +152,7 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     personality: "元気いっぱいのアイドル風。ポップでキュートな話し方。",
     googleVoiceId: "ja-JP-Wavenet-B",
     elevenLabsVoiceId: ELEVENLABS_VOICES.female3,
+    geminiVoiceId: GEMINI_VOICES.female2,
     color: "from-cyan-400 to-blue-500",
   },
   {
@@ -111,6 +163,7 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     personality: "頼れる先生タイプ。落ち着いて論理的に説明する。",
     googleVoiceId: "ja-JP-Neural2-B",
     elevenLabsVoiceId: ELEVENLABS_VOICES.male1,
+    geminiVoiceId: GEMINI_VOICES.male1,
     color: "from-blue-400 to-indigo-500",
   },
   {
@@ -121,6 +174,7 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     personality: "若くてエネルギッシュ。テンション高めでノリが良い。",
     googleVoiceId: "ja-JP-Neural2-D",
     elevenLabsVoiceId: ELEVENLABS_VOICES.male3,
+    geminiVoiceId: GEMINI_VOICES.male3,
     color: "from-green-400 to-emerald-500",
   },
   {
@@ -131,6 +185,7 @@ const AVATAR_CHARACTERS: AvatarCharacter[] = [
     personality: "物静かな知識人。深みのある声で説得力がある。",
     googleVoiceId: "ja-JP-Wavenet-C",
     elevenLabsVoiceId: ELEVENLABS_VOICES.male2,
+    geminiVoiceId: GEMINI_VOICES.male2,
     color: "from-amber-400 to-orange-500",
   },
 ];
@@ -171,6 +226,10 @@ export default function Home() {
   const [currentUser] = useState<string>("00000000-0000-0000-0000-000000000001");
   const [selectedAvatar, setSelectedAvatar] = useState<AvatarCharacter>(AVATAR_CHARACTERS[0]);
   const [ttsProvider, setTtsProvider] = useState<TTSProvider>("google");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
+  const [openingEnabled, setOpeningEnabled] = useState(true);
+  const [endingEnabled, setEndingEnabled] = useState(true);
+  const [avatarEnabled, setAvatarEnabled] = useState(false);
   const [videoHistory, setVideoHistory] = useState<DBVideo[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
@@ -275,6 +334,7 @@ export default function Home() {
             url: data.video.bgm_url,
             volume: data.video.bgm_volume || 0.15,
           } : undefined,
+          aspectRatio: "16:9", // Default for historical videos
         };
         setVideoConfig(loadedConfig);
         setStep("complete");
@@ -355,15 +415,16 @@ export default function Home() {
       }
       setGenerationProgress(55);
 
-      // 3. Generate Audio with Google TTS and calculate duration
-      console.log("🎤 Using voice:", selectedAvatar.voiceId, "Character:", selectedAvatar.name);
+      // 3. Generate Audio with TTS and calculate duration
+      const currentVoiceId = ttsProvider === "gemini" ? selectedAvatar.geminiVoiceId : ttsProvider === "elevenlabs" ? selectedAvatar.elevenLabsVoiceId : selectedAvatar.googleVoiceId;
+      console.log("🎤 URL mode - Using voice:", currentVoiceId, "Character:", selectedAvatar.name, "Provider:", ttsProvider);
       for (let i = 0; i < updatedScenes.length; i++) {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
             text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
             config: {
               provider: ttsProvider,
-              voice: ttsProvider === "elevenlabs" ? selectedAvatar.elevenLabsVoiceId : selectedAvatar.googleVoiceId,
+              voice: currentVoiceId,
               speed: ttsProvider === "google" ? 1.0 : undefined
             }
           });
@@ -417,7 +478,15 @@ export default function Home() {
       }
       setGenerationProgress(95);
 
-      const finalConfig = { ...config, scenes: updatedScenes, bgm: bgmConfig };
+      const finalConfig = {
+        ...config,
+        scenes: updatedScenes,
+        bgm: bgmConfig,
+        aspectRatio,
+        opening: openingEnabled ? { enabled: true, duration: 3 } : { enabled: false },
+        ending: endingEnabled ? { enabled: true, duration: 4, callToAction: "ご視聴ありがとうございました" } : { enabled: false },
+        avatar: avatarEnabled ? { enabled: true, position: "right" as const, size: "medium" as const } : { enabled: false },
+      };
       setVideoConfig(finalConfig);
       setGenerationProgress(100);
 
@@ -460,14 +529,15 @@ export default function Home() {
       setGenerationProgress(55);
 
       // 3. Generate Audio with TTS and calculate duration
-      console.log("🎤 Using voice:", selectedAvatar.voiceId, "Character:", selectedAvatar.name);
+      const currentVoiceId = ttsProvider === "gemini" ? selectedAvatar.geminiVoiceId : ttsProvider === "elevenlabs" ? selectedAvatar.elevenLabsVoiceId : selectedAvatar.googleVoiceId;
+      console.log("🎤 Theme mode - Using voice:", currentVoiceId, "Character:", selectedAvatar.name, "Provider:", ttsProvider);
       for (let i = 0; i < updatedScenes.length; i++) {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
             text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
             config: {
               provider: ttsProvider,
-              voice: ttsProvider === "elevenlabs" ? selectedAvatar.elevenLabsVoiceId : selectedAvatar.googleVoiceId,
+              voice: currentVoiceId,
               speed: ttsProvider === "google" ? 1.0 : undefined
             }
           });
@@ -521,7 +591,15 @@ export default function Home() {
       }
       setGenerationProgress(95);
 
-      const finalConfig = { ...config, scenes: updatedScenes, bgm: bgmConfig };
+      const finalConfig = {
+        ...config,
+        scenes: updatedScenes,
+        bgm: bgmConfig,
+        aspectRatio,
+        opening: openingEnabled ? { enabled: true, duration: 3 } : { enabled: false },
+        ending: endingEnabled ? { enabled: true, duration: 4, callToAction: "ご視聴ありがとうございました" } : { enabled: false },
+        avatar: avatarEnabled ? { enabled: true, position: "right" as const, size: "medium" as const } : { enabled: false },
+      };
       setVideoConfig(finalConfig);
       setGenerationProgress(100);
 
@@ -562,14 +640,15 @@ export default function Home() {
       setGenerationProgress(65);
 
       // 3. Generate Audio with TTS and calculate duration
-      console.log("🎤 Using voice:", selectedAvatar.voiceId, "Character:", selectedAvatar.name);
+      const currentVoiceId = ttsProvider === "gemini" ? selectedAvatar.geminiVoiceId : ttsProvider === "elevenlabs" ? selectedAvatar.elevenLabsVoiceId : selectedAvatar.googleVoiceId;
+      console.log("🎤 Voice mode - Using voice:", currentVoiceId, "Character:", selectedAvatar.name, "Provider:", ttsProvider);
       for (let i = 0; i < updatedScenes.length; i++) {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
             text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
             config: {
               provider: ttsProvider,
-              voice: ttsProvider === "elevenlabs" ? selectedAvatar.elevenLabsVoiceId : selectedAvatar.googleVoiceId,
+              voice: currentVoiceId,
               speed: ttsProvider === "google" ? 1.0 : undefined
             }
           });
@@ -603,7 +682,15 @@ export default function Home() {
       }
       setGenerationProgress(95);
 
-      const finalConfig = { ...config, scenes: updatedScenes, bgm: bgmConfig };
+      const finalConfig = {
+        ...config,
+        scenes: updatedScenes,
+        bgm: bgmConfig,
+        aspectRatio,
+        opening: openingEnabled ? { enabled: true, duration: 3 } : { enabled: false },
+        ending: endingEnabled ? { enabled: true, duration: 4, callToAction: "ご視聴ありがとうございました" } : { enabled: false },
+        avatar: avatarEnabled ? { enabled: true, position: "right" as const, size: "medium" as const } : { enabled: false },
+      };
       setVideoConfig(finalConfig);
       setGenerationProgress(100);
 
@@ -675,32 +762,139 @@ export default function Home() {
                     <div>
                       <p className="font-medium text-sm">音声エンジン</p>
                       <p className="text-[10px] text-slate-500">
-                        {ttsProvider === "google" ? "無料枠: 100万文字/月" : "無料枠: 1万文字/月（高品質）"}
+                        {ttsProvider === "google" && "無料枠: 100万文字/月"}
+                        {ttsProvider === "elevenlabs" && "無料枠: 1万文字/月（高品質）"}
+                        {ttsProvider === "gemini" && "自然な息遣い・感情表現 🌟"}
                       </p>
                     </div>
                   </div>
                   <div className="flex gap-1 bg-white rounded-lg p-1 border">
                     <button
                       onClick={() => setTtsProvider("google")}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
                         ttsProvider === "google"
                           ? "bg-blue-500 text-white"
                           : "text-slate-600 hover:bg-slate-100"
                       }`}
                     >
-                      Google TTS
+                      Google
                     </button>
                     <button
                       onClick={() => setTtsProvider("elevenlabs")}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
                         ttsProvider === "elevenlabs"
                           ? "bg-purple-500 text-white"
                           : "text-slate-600 hover:bg-slate-100"
                       }`}
                     >
-                      ElevenLabs ✨
+                      ElevenLabs
+                    </button>
+                    <button
+                      onClick={() => setTtsProvider("gemini")}
+                      className={`px-2 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        ttsProvider === "gemini"
+                          ? "bg-gradient-to-r from-green-500 to-teal-500 text-white"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      Gemini ✨
                     </button>
                   </div>
+                </div>
+
+                {/* Aspect Ratio Selection */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📐</span>
+                    <div>
+                      <p className="font-medium text-sm">アスペクト比</p>
+                      <p className="text-[10px] text-slate-500">
+                        {aspectRatio === "16:9" ? "YouTube標準（横長）" : "Shorts/TikTok（縦長）"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 bg-white rounded-lg p-1 border">
+                    <button
+                      onClick={() => setAspectRatio("16:9")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${
+                        aspectRatio === "16:9"
+                          ? "bg-blue-500 text-white"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      <span className="inline-block w-4 h-2.5 border border-current rounded-sm"></span>
+                      16:9
+                    </button>
+                    <button
+                      onClick={() => setAspectRatio("9:16")}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-1 ${
+                        aspectRatio === "9:16"
+                          ? "bg-gradient-to-r from-pink-500 to-orange-500 text-white"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      <span className="inline-block w-2.5 h-4 border border-current rounded-sm"></span>
+                      9:16
+                    </button>
+                  </div>
+                </div>
+
+                {/* Opening/Ending Scenes */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🎬</span>
+                    <div>
+                      <p className="font-medium text-sm">オープニング/エンディング</p>
+                      <p className="text-[10px] text-slate-500">
+                        タイトル表示と締めの画面を追加
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setOpeningEnabled(!openingEnabled)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        openingEnabled
+                          ? "bg-indigo-500 text-white"
+                          : "bg-white border text-slate-500 hover:bg-slate-100"
+                      }`}
+                    >
+                      OP {openingEnabled ? "✓" : ""}
+                    </button>
+                    <button
+                      onClick={() => setEndingEnabled(!endingEnabled)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        endingEnabled
+                          ? "bg-violet-500 text-white"
+                          : "bg-white border text-slate-500 hover:bg-slate-100"
+                      }`}
+                    >
+                      ED {endingEnabled ? "✓" : ""}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Avatar Lip Sync */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">👤</span>
+                    <div>
+                      <p className="font-medium text-sm">アバター（リップシンク）</p>
+                      <p className="text-[10px] text-slate-500">
+                        音声に合わせて口が動くアバターを表示
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setAvatarEnabled(!avatarEnabled)}
+                    className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      avatarEnabled
+                        ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white"
+                        : "bg-white border text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >
+                    {avatarEnabled ? "ON ✓" : "OFF"}
+                  </button>
                 </div>
 
                 {/* Avatar/Character Selection - Compact 6-column */}
@@ -980,7 +1174,11 @@ export default function Home() {
                   <p className="text-sm text-slate-500 max-w-[300px]">
                     {generationProgress < 20 && "🤖 Gemini が台本を作成しています"}
                     {generationProgress >= 20 && generationProgress < 55 && "🎨 Gemini が背景画像を生成しています"}
-                    {generationProgress >= 55 && generationProgress < 80 && "🎙️ Google TTS が日本語音声を生成しています"}
+                    {generationProgress >= 55 && generationProgress < 80 && (
+                      ttsProvider === "gemini" ? "🎙️ Gemini Live が自然な音声を生成しています" :
+                      ttsProvider === "elevenlabs" ? "🎙️ ElevenLabs が高品質音声を生成しています" :
+                      "🎙️ Google TTS が日本語音声を生成しています"
+                    )}
                     {generationProgress >= 80 && generationProgress < 90 && "🔊 効果音を追加しています"}
                     {generationProgress >= 90 && generationProgress < 95 && "🎵 BGMを選択しています"}
                     {generationProgress >= 95 && "✨ 最終調整を行っています"}
@@ -1001,16 +1199,25 @@ export default function Home() {
                   <h3 className="font-bold text-xl">{videoConfig.title}</h3>
 
                   {/* Remotion Player Preview */}
-                  <div className="aspect-video w-full overflow-hidden rounded-2xl shadow-2xl border-4 border-white">
+                  <div className={`w-full overflow-hidden rounded-2xl shadow-2xl border-4 border-white ${
+                    (videoConfig.aspectRatio || "16:9") === "9:16" ? "max-w-[400px] mx-auto" : ""
+                  }`} style={{
+                    aspectRatio: (videoConfig.aspectRatio || "16:9") === "16:9" ? "16/9" : "9/16"
+                  }}>
                     <Player
                       component={MainVideo as any}
                       inputProps={videoConfig}
-                      durationInFrames={videoConfig.scenes.reduce((acc, scene) => acc + scene.duration * 30, 0)}
+                      durationInFrames={
+                        (videoConfig.opening?.enabled ? (videoConfig.opening.duration || 3) * 30 : 0) +
+                        videoConfig.scenes.reduce((acc, scene) => acc + scene.duration * 30, 0) +
+                        (videoConfig.ending?.enabled ? (videoConfig.ending.duration || 4) * 30 : 0)
+                      }
                       fps={30}
-                      compositionWidth={1920}
-                      compositionHeight={1080}
+                      compositionWidth={RESOLUTIONS[videoConfig.aspectRatio || "16:9"].width}
+                      compositionHeight={RESOLUTIONS[videoConfig.aspectRatio || "16:9"].height}
                       style={{
                         width: "100%",
+                        height: "100%",
                       }}
                       controls
                     />
