@@ -47,15 +47,72 @@ type InputMode = "voice" | "theme" | "url";
 const URL_HISTORY_KEY = "video-generator-url-history";
 const MAX_URL_HISTORY = 10;
 
-// Google TTS Japanese voices
-const VOICE_OPTIONS = [
-  { id: "ja-JP-Neural2-C", name: "女性 (Neural2-C)", gender: "female" },
-  { id: "ja-JP-Neural2-B", name: "男性 (Neural2-B)", gender: "male" },
-  { id: "ja-JP-Neural2-D", name: "男性 (Neural2-D)", gender: "male" },
-  { id: "ja-JP-Wavenet-A", name: "女性 (Wavenet-A)", gender: "female" },
-  { id: "ja-JP-Wavenet-B", name: "女性 (Wavenet-B)", gender: "female" },
-  { id: "ja-JP-Wavenet-C", name: "男性 (Wavenet-C)", gender: "male" },
-  { id: "ja-JP-Wavenet-D", name: "男性 (Wavenet-D)", gender: "male" },
+// Avatar characters with personalities
+interface AvatarCharacter {
+  id: string;
+  name: string;
+  gender: "female" | "male";
+  emoji: string;
+  personality: string;
+  voiceId: string;
+  color: string;
+}
+
+const AVATAR_CHARACTERS: AvatarCharacter[] = [
+  {
+    id: "yuki",
+    name: "ユキ",
+    gender: "female",
+    emoji: "👩‍💼",
+    personality: "明るく親しみやすいお姉さん。丁寧でわかりやすい説明が得意。",
+    voiceId: "ja-JP-Neural2-C",
+    color: "from-pink-400 to-rose-500",
+  },
+  {
+    id: "sakura",
+    name: "サクラ",
+    gender: "female",
+    emoji: "🌸",
+    personality: "落ち着いた大人の女性。上品で知的な語り口が特徴。",
+    voiceId: "ja-JP-Wavenet-A",
+    color: "from-purple-400 to-pink-500",
+  },
+  {
+    id: "miku",
+    name: "ミク",
+    gender: "female",
+    emoji: "💫",
+    personality: "元気いっぱいのアイドル風。ポップでキュートな話し方。",
+    voiceId: "ja-JP-Wavenet-B",
+    color: "from-cyan-400 to-blue-500",
+  },
+  {
+    id: "takeshi",
+    name: "タケシ",
+    gender: "male",
+    emoji: "👨‍🏫",
+    personality: "頼れる先生タイプ。落ち着いて論理的に説明する。",
+    voiceId: "ja-JP-Neural2-B",
+    color: "from-blue-400 to-indigo-500",
+  },
+  {
+    id: "ken",
+    name: "ケン",
+    gender: "male",
+    emoji: "🎤",
+    personality: "若くてエネルギッシュ。テンション高めでノリが良い。",
+    voiceId: "ja-JP-Neural2-D",
+    color: "from-green-400 to-emerald-500",
+  },
+  {
+    id: "hiroshi",
+    name: "ヒロシ",
+    gender: "male",
+    emoji: "📚",
+    personality: "物静かな知識人。深みのある声で説得力がある。",
+    voiceId: "ja-JP-Wavenet-C",
+    color: "from-amber-400 to-orange-500",
+  },
 ];
 
 // Normalize URL: add https:// if missing
@@ -79,7 +136,7 @@ export default function Home() {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [step, setStep] = useState<"select" | "record" | "theme" | "url" | "edit" | "generating" | "complete" | "history">("select");
   const [currentUser] = useState<string>("00000000-0000-0000-0000-000000000001");
-  const [selectedVoice, setSelectedVoice] = useState<string>("ja-JP-Neural2-C");
+  const [selectedAvatar, setSelectedAvatar] = useState<AvatarCharacter>(AVATAR_CHARACTERS[0]);
   const [videoHistory, setVideoHistory] = useState<DBVideo[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
@@ -269,7 +326,7 @@ export default function Home() {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
             text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
-            config: { provider: "google", voice: selectedVoice, speed: 1.0 }
+            config: { provider: "google", voice: selectedAvatar.voiceId, speed: 1.0 }
           });
           updatedScenes[i].audioUrl = audioRes.data.audioUrl;
         } catch (err) {
@@ -363,7 +420,7 @@ export default function Home() {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
             text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
-            config: { provider: "google", voice: selectedVoice, speed: 1.0 }
+            config: { provider: "google", voice: selectedAvatar.voiceId, speed: 1.0 }
           });
           updatedScenes[i].audioUrl = audioRes.data.audioUrl;
         } catch (err) {
@@ -455,7 +512,7 @@ export default function Home() {
         try {
           const audioRes = await axios.post("/api/generate-voice", {
             text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
-            config: { provider: "google", voice: selectedVoice, speed: 1.0 }
+            config: { provider: "google", voice: selectedAvatar.voiceId, speed: 1.0 }
           });
           updatedScenes[i].audioUrl = audioRes.data.audioUrl;
         } catch (err) {
@@ -547,26 +604,45 @@ export default function Home() {
           <CardContent className="space-y-6">
             {step === "select" && (
               <div className="space-y-6 animate-in fade-in">
-                {/* Voice Selection */}
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">🎙️</span>
-                    <div>
-                      <p className="font-medium text-sm">ナレーション音声</p>
-                      <p className="text-xs text-slate-500">動画で使用する声を選択</p>
-                    </div>
+                {/* Avatar/Character Selection */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🎭</span>
+                    <p className="font-medium text-sm">ナレーターを選択</p>
                   </div>
-                  <select
-                    value={selectedVoice}
-                    onChange={(e) => setSelectedVoice(e.target.value)}
-                    className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {VOICE_OPTIONS.map((voice) => (
-                      <option key={voice.id} value={voice.id}>
-                        {voice.name}
-                      </option>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {AVATAR_CHARACTERS.map((avatar) => (
+                      <button
+                        key={avatar.id}
+                        onClick={() => setSelectedAvatar(avatar)}
+                        className={`relative p-4 rounded-xl border-2 transition-all text-left ${
+                          selectedAvatar.id === avatar.id
+                            ? "border-blue-500 bg-blue-50 shadow-md"
+                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        {selectedAvatar.id === avatar.id && (
+                          <div className="absolute top-2 right-2 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs">✓</span>
+                          </div>
+                        )}
+                        <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${avatar.color} flex items-center justify-center text-2xl mb-2 shadow-sm`}>
+                          {avatar.emoji}
+                        </div>
+                        <p className="font-bold text-sm">{avatar.name}</p>
+                        <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">
+                          {avatar.personality}
+                        </p>
+                        <span className={`inline-block mt-2 text-[10px] px-2 py-0.5 rounded-full ${
+                          avatar.gender === "female"
+                            ? "bg-pink-100 text-pink-600"
+                            : "bg-blue-100 text-blue-600"
+                        }`}>
+                          {avatar.gender === "female" ? "♀ 女性" : "♂ 男性"}
+                        </span>
+                      </button>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
                 {/* Mode Selection */}
