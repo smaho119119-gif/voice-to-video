@@ -41,13 +41,24 @@ const ELEVENLABS_VOICE_OPTIONS = [
 ];
 
 const GEMINI_VOICE_OPTIONS = [
+  // 女性ボイス (4)
   { id: "Zephyr", name: "Zephyr", gender: "female", description: "明るい女性声" },
-  { id: "Puck", name: "Puck", gender: "male", description: "活発な男性声" },
-  { id: "Charon", name: "Charon", gender: "male", description: "落ち着いた男性声" },
   { id: "Kore", name: "Kore", gender: "female", description: "柔らかい女性声" },
-  { id: "Fenrir", name: "Fenrir", gender: "male", description: "力強い男性声" },
   { id: "Leda", name: "Leda", gender: "female", description: "温かみのある女性声" },
   { id: "Aoede", name: "Aoede", gender: "female", description: "自然な女性声" },
+  // 男性ボイス (4)
+  { id: "Puck", name: "Puck", gender: "male", description: "活発な男性声" },
+  { id: "Charon", name: "Charon", gender: "male", description: "落ち着いた男性声" },
+  { id: "Fenrir", name: "Fenrir", gender: "male", description: "力強い男性声" },
+  { id: "Orus", name: "Orus", gender: "male", description: "知的な男性声" },
+];
+
+// Gemini TTS Models
+const GEMINI_TTS_MODELS = [
+  { id: "gemini-2.5-flash-preview-tts", name: "Flash Preview", description: "バランス型（デフォルト）" },
+  { id: "gemini-2.5-flash-tts", name: "Flash", description: "高速・安定版" },
+  { id: "gemini-2.5-pro-tts", name: "Pro", description: "最高品質（低速）" },
+  { id: "gemini-2.5-flash-lite-preview-tts", name: "Flash Lite", description: "最速・軽量" },
 ];
 
 function getVoiceOptionsForProvider(provider: TTSProvider) {
@@ -94,6 +105,7 @@ export default function EditorPage() {
   // TTS settings
   const [ttsProvider, setTtsProvider] = useState<TTSProvider>("gemini");
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>("Zephyr");
+  const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>("gemini-2.5-flash-preview-tts");
 
   // Resize handlers
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -568,6 +580,7 @@ export default function EditorPage() {
                 provider: ttsProvider,
                 voice: selectedVoiceId,
                 style: cut.voiceStyle,  // 演技指導を渡す
+                model: ttsProvider === "gemini" ? selectedGeminiModel : undefined,
               },
             }),
           });
@@ -960,7 +973,15 @@ export default function EditorPage() {
 
               {/* TTS Provider Selection */}
               <div className="mb-3">
-                <label className="text-xs text-green-300/70 mb-1 block">音声エンジン</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-green-300/70">音声エンジン</label>
+                  <Link
+                    href="/voice-test"
+                    className="text-[10px] text-green-400 hover:text-green-300 underline"
+                  >
+                    音声テスト →
+                  </Link>
+                </div>
                 <div className="flex gap-1">
                   <button
                     onClick={() => {
@@ -973,7 +994,7 @@ export default function EditorPage() {
                         : "bg-gray-700 text-gray-400 hover:text-white"
                     }`}
                   >
-                    Gemini 2.5
+                    Gemini 2.5 TTS
                   </button>
                   <button
                     onClick={() => {
@@ -1003,6 +1024,29 @@ export default function EditorPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Gemini Model Selection (only when Gemini is selected) */}
+              {ttsProvider === "gemini" && (
+                <div className="mb-3">
+                  <label className="text-xs text-green-300/70 mb-1 block">TTSモデル</label>
+                  <div className="grid grid-cols-2 gap-1">
+                    {GEMINI_TTS_MODELS.map((model) => (
+                      <button
+                        key={model.id}
+                        onClick={() => setSelectedGeminiModel(model.id)}
+                        className={`py-1 px-2 rounded text-[10px] transition-colors text-left ${
+                          selectedGeminiModel === model.id
+                            ? "bg-purple-500/80 text-white"
+                            : "bg-gray-700/50 text-gray-300 hover:bg-gray-600"
+                        }`}
+                        title={model.description}
+                      >
+                        <span className="font-medium">{model.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Voice Selection */}
               <div className="mb-3">

@@ -62,3 +62,14 @@
 - 他のアプリのテーブルと区別するため、必ず統一する
 - RLSポリシー名にもプレフィクスを含める（例: `"Users can view their own vg_projects"`）
 - 関数/トリガー名にもプレフィクスを含める（例: `vg_set_current_project()`）
+
+### 9) TTS（音声合成）設定
+- **デフォルトTTSエンジン**: Gemini 2.5 TTS（無料、レート制限あり）
+- **使用可能なGemini TTSモデル**:
+  - `gemini-2.5-flash-preview-tts` - バランス型（デフォルト）
+  - `gemini-2.5-flash-tts` - 高速・安定版
+  - `gemini-2.5-pro-tts` - 最高品質（低速）
+  - `gemini-2.5-flash-lite-preview-tts` - 最速・軽量
+- **ボイス**: 女性4名（Zephyr, Kore, Leda, Aoede）、男性4名（Puck, Charon, Fenrir, Orus）
+- **演技指導（voice_style）**: 各シーンで感情・トーンを自然言語で指定可能
+- 他プロバイダー: Google Cloud TTS, ElevenLabs も選択可能

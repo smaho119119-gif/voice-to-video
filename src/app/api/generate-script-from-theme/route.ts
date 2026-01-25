@@ -1,9 +1,79 @@
+/**
+ * Generate Script From Theme API Route
+ * 薄いルーティング層 - バリデーション + 呼び出し + レスポンス整形のみ
+ *
+ * リファクタリング履歴:
+ * - 2026-01-23: API化・モジュール化（CLAUDE.md準拠）
+ * - 既存コードは下部にコメントアウトで保持（ロールバック可能）
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { createGeminiService } from "@/services/geminiService";
+import { generateScriptFromTheme } from "@/usecases/generateScriptFromTheme";
+
+export async function POST(req: NextRequest) {
+    try {
+        // 1. 入力バリデーション
+        const body = await req.json();
+        const { theme, targetDuration = 60, style = "educational" } = body;
+
+        if (!theme || typeof theme !== "string" || theme.trim().length === 0) {
+            return NextResponse.json(
+                { error: "Theme is required and must be a non-empty string" },
+                { status: 400 }
+            );
+        }
+
+        // 2. サービス初期化
+        const geminiService = createGeminiService();
+
+        // 3. ユースケース実行
+        const script = await generateScriptFromTheme(
+            {
+                theme,
+                targetDuration,
+                style,
+            },
+            geminiService
+        );
+
+        // 4. レスポンス整形
+        return NextResponse.json({
+            success: true,
+            script,
+        });
+    } catch (error: any) {
+        console.error("Theme Script Generation Error:", error);
+
+        // エラーハンドリング
+        if (error.message.includes("GEMINI_API_KEY")) {
+            return NextResponse.json(
+                { error: "Gemini API Key is not configured" },
+                { status: 500 }
+            );
+        }
+
+        return NextResponse.json(
+            {
+                error: "Failed to generate script from theme",
+                details: error.message,
+            },
+            { status: 500 }
+        );
+    }
+}
+
+/* ============================================
+ * 旧実装（2026-01-23まで使用）
+ * 問題なければ将来的に削除予定
+ * ============================================
+
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-export async function POST(req: NextRequest) {
+export async function POST_OLD(req: NextRequest) {
     if (!process.env.GEMINI_API_KEY) {
         return NextResponse.json(
             { error: "Gemini API Key is missing" },
@@ -59,7 +129,7 @@ ${styleGuides[style] || styleGuides.educational}
       "duration": 5,
       "avatar_script": "アバターが話す台本（自然な日本語、句読点や間を意識）",
       "subtitle": "画面に表示する字幕（簡潔に）",
-      "image_prompt": "背景画像生成用の詳細な英語プロンプト（高品質、16:9、映画的）",
+      "image_prompt": "背景画像生成用の日本語プロンプト（日本的な要素、高品質、16:9、映画的）",
       "emotion": "アバターの表情や話し方（neutral/happy/serious/excited/thoughtful）",
       "transition": "シーン切り替え効果（fade/slide/zoom/wipe）",
       "emphasis_words": ["強調する単語1", "強調する単語2"],
@@ -106,8 +176,35 @@ ${styleGuides[style] || styleGuides.educational}
 注意:
 - avatar_scriptは声に出して読んで自然な日本語にすること
 - 「えー」「まあ」などのフィラーは適度に入れても良い
-- image_promptは英語で、cinematic, high quality, 4K, detailed などを含める
+
+【画像プロンプト（image_prompt）の作成ルール】
+CRITICAL: 以下のルールを厳守すること
+
+1. **日本語で記述** - 必ず日本語で記述する
+2. **日本的要素** - 人物は「日本人」「アジア系」、場所は「日本の」を明記
+3. **シネマティック構図** - 以下の要素を組み込む:
+   - カメラアングル: 「アイレベル」「ローアングル」「俯瞰」など
+   - ライティング: 「自然光」「ゴールデンアワー」「スタジオライティング」など
+   - 色調: 「温かみのある色調」「クールトーン」「鮮やかな色彩」など
+   - 被写界深度: 「浅い被写界深度で背景ぼかし」など
+
+4. **Ken Burns効果対応** - パン・ズームに適した構図:
+   - 「余白のある構図」を意識
+   - 「被写体は画面中央やや左/右に配置」などの指示
+   - 「奥行きのある配置」で動きを出しやすくする
+
+5. **AI感を消す工夫**:
+   - 完璧すぎない自然な構図（「やや傾いた」「ナチュラルな」）
+   - リアルな光の表現（「窓からの自然光」「柔らかい影」）
+   - 人間らしさ（「笑顔の」「考え込んでいる」などの自然な表情）
+
+6. **具体例**:
+   良い例: 「日本の現代的なオフィスで働く若い日本人ビジネスマン、ノートPCでタイピング中、窓からの自然光で温かみのある色調、アイレベルのカメラアングル、浅い被写界深度で背景ぼかし、被写体は画面右寄りに配置、16:9、映画的な構図」
+
+   悪い例: 「オフィスで働く人、きれいな画像」（日本的要素なし、構図指示なし、抽象的すぎる）
+
 - transitionとemphasis_wordsは必ず各シーンに含める
+- 画像プロンプトは最低50文字以上、具体的に記述すること
 `;
 
         const result = await model.generateContent({
@@ -131,3 +228,5 @@ ${styleGuides[style] || styleGuides.educational}
         );
     }
 }
+
+============================================ */

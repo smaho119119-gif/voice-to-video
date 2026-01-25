@@ -12,6 +12,7 @@ interface VoiceConfig {
     speed?: number;
     pitch?: number;
     style?: string; // 演技指導: "疲れた声で、ゆっくりと" など
+    model?: string; // Gemini TTS model: "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-tts", etc.
 }
 
 // Helper to upload audio and return URL
@@ -209,6 +210,39 @@ async function generateElevenLabsVoice(text: string, config: VoiceConfig, userId
     });
 }
 
+// Convert PCM to WAV format
+function pcmToWav(pcmData: Buffer, sampleRate: number = 24000, channels: number = 1, bitsPerSample: number = 16): Buffer {
+    const dataLength = pcmData.length;
+    const headerLength = 44;
+    const totalLength = headerLength + dataLength;
+    const byteRate = sampleRate * channels * (bitsPerSample / 8);
+    const blockAlign = channels * (bitsPerSample / 8);
+
+    const buffer = Buffer.alloc(totalLength);
+
+    // RIFF header
+    buffer.write("RIFF", 0);
+    buffer.writeUInt32LE(totalLength - 8, 4);
+    buffer.write("WAVE", 8);
+
+    // fmt sub-chunk
+    buffer.write("fmt ", 12);
+    buffer.writeUInt32LE(16, 16); // Subchunk1Size (16 for PCM)
+    buffer.writeUInt16LE(1, 20); // AudioFormat (1 for PCM)
+    buffer.writeUInt16LE(channels, 22);
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(byteRate, 28);
+    buffer.writeUInt16LE(blockAlign, 32);
+    buffer.writeUInt16LE(bitsPerSample, 34);
+
+    // data sub-chunk
+    buffer.write("data", 36);
+    buffer.writeUInt32LE(dataLength, 40);
+    pcmData.copy(buffer, 44);
+
+    return buffer;
+}
+
 // Gemini 2.5 TTS Preview (natural, human-like voice with improved Japanese support)
 async function generateGeminiVoice(text: string, config: VoiceConfig, userId: string) {
     if (!process.env.GEMINI_API_KEY) {
@@ -217,13 +251,14 @@ async function generateGeminiVoice(text: string, config: VoiceConfig, userId: st
 
     const voiceName = config?.voice || "Zephyr";
     const voiceStyle = config?.style || "";
-    console.log("[Gemini 2.5 TTS] Using voice:", voiceName, "Style:", voiceStyle || "(default)");
+    const ttsModel = config?.model || "gemini-2.5-flash-preview-tts";
+    console.log("[Gemini 2.5 TTS] Using voice:", voiceName, "Model:", ttsModel, "Style:", voiceStyle || "(default)");
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-    // Use Gemini 2.5 Flash Preview TTS model
+    // Use selected Gemini TTS model
     const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-preview-tts",
+        model: ttsModel,
         generationConfig: {
             responseModalities: ["audio"],
             speechConfig: {
@@ -267,7 +302,30 @@ ${text}`;
                 if ((part as any).inlineData?.mimeType?.startsWith("audio/")) {
                     const audioData = (part as any).inlineData.data;
                     const mimeType = (part as any).inlineData.mimeType;
-                    const format = mimeType.split("/")[1] || "wav";
+                    console.log("[Gemini TTS] Received audio mimeType:", mimeType);
+
+                    // Handle PCM/L16 format - convert to WAV
+                    if (mimeType.includes("L16") || mimeType.includes("pcm") || mimeType.includes("raw")) {
+                        // Parse sample rate from mimeType (e.g., "audio/L16;rate=24000")
+                        const rateMatch = mimeType.match(/rate=(\d+)/);
+                        const sampleRate = rateMatch ? parseInt(rateMatch[1]) : 24000;
+
+                        const pcmBuffer = Buffer.from(audioData, "base64");
+                        const wavBuffer = pcmToWav(pcmBuffer, sampleRate);
+                        const wavBase64 = wavBuffer.toString("base64");
+                        const audioUrl = await uploadAndReturnUrl(wavBase64, userId, "wav");
+
+                        return NextResponse.json({
+                            success: true,
+                            provider: "gemini",
+                            audioUrl,
+                            format: "wav",
+                            voice: voiceName
+                        });
+                    }
+
+                    // Other formats (mp3, wav, etc.) - use as-is
+                    const format = mimeType.split("/")[1]?.split(";")[0] || "wav";
                     const audioUrl = await uploadAndReturnUrl(audioData, userId, format);
 
                     return NextResponse.json({
@@ -275,7 +333,7 @@ ${text}`;
                         provider: "gemini",
                         audioUrl,
                         format,
-                        voice: config?.voice || "Aoede"
+                        voice: voiceName
                     });
                 }
             }
