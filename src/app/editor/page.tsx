@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { VideoStyleSelector } from "@/components/VideoStyleSelector";
 import { CutList } from "@/components/CutList";
 import { VideoPreview } from "@/components/VideoPreview";
@@ -10,6 +10,7 @@ import {
   ImageEffect,
   TextAnimation,
   SceneTransition,
+  SpeakerType,
   getDefaultConfig,
   calculateCutCount,
 } from "@/lib/video-presets";
@@ -19,10 +20,13 @@ import {
   updateAllCuts,
 } from "@/lib/auto-cut-generator";
 import { VideoProps, Scene } from "@/remotion/MainVideo";
-import { Loader2, Download, ArrowLeft, Sparkles, FileText, Wand2, Volume2, GripVertical, Globe, Mic } from "lucide-react";
+import { Loader2, Download, ArrowLeft, Sparkles, FileText, Wand2, Volume2, GripVertical, Globe, Mic, Eye, X, Database, Check, Save, Book } from "lucide-react";
 import Link from "next/link";
 import { AudioRecorder } from "@/components/AudioRecorder";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/lib/auth-context";
+import { useToast } from "@/components/Toast";
+import { ReadingDictionaryModal } from "@/components/ReadingDictionaryModal";
 
 type InputMode = "theme" | "url" | "voice";
 type TTSProvider = "google" | "elevenlabs" | "gemini";
@@ -71,6 +75,10 @@ function getVoiceOptionsForProvider(provider: TTSProvider) {
 }
 
 export default function EditorPage() {
+  // Auth & Toast
+  const { user } = useAuth();
+  const { showToast } = useToast();
+
   // Video style configuration
   const [styleConfig, setStyleConfig] = useState<VideoStyleConfig>(getDefaultConfig());
 
@@ -98,14 +106,58 @@ export default function EditorPage() {
   // Input mode states
   const [inputMode, setInputMode] = useState<InputMode>("theme");
   const [urlInput, setUrlInput] = useState("");
+  const [urlHistory, setUrlHistory] = useState<string[]>([]);
+  const [showUrlHistory, setShowUrlHistory] = useState(false);
   const [transcribedText, setTranscribedText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isGeneratingFromUrl, setIsGeneratingFromUrl] = useState(false);
 
   // TTS settings
   const [ttsProvider, setTtsProvider] = useState<TTSProvider>("gemini");
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("Zephyr");
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("Zephyr");  // メイン話者
+  const [secondaryVoiceId, setSecondaryVoiceId] = useState<string>("Puck");  // 第2話者（guest/customer等）
   const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>("gemini-2.5-flash-preview-tts");
+
+  // Video settings
+  const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("9:16");  // PC用 16:9, スマホ用 9:16
+  const [previewAspectRatio, setPreviewAspectRatio] = useState<"16:9" | "9:16">("9:16");  // プレビュー用アスペクト比
+
+  // JSON Check Modal
+  const [showJsonModal, setShowJsonModal] = useState(false);
+  const [generatedJson, setGeneratedJson] = useState<any>(null);
+  const [isSavingToDb, setIsSavingToDb] = useState(false);
+  const [dbSaveStatus, setDbSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
+  // Image generation
+  const [isGeneratingImages, setIsGeneratingImages] = useState(false);
+  const [imageProgress, setImageProgress] = useState({ current: 0, total: 0 });
+  const [currentGeneratingIndex, setCurrentGeneratingIndex] = useState<number | null>(null);
+
+  // Project loading
+  const [showProjectList, setShowProjectList] = useState(false);
+  const [savedProjects, setSavedProjects] = useState<any[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+
+  // Manual save state
+  const [isSavingProject, setIsSavingProject] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+
+  // Reading dictionary modal
+  const [showDictionaryModal, setShowDictionaryModal] = useState(false);
+  const [dictionaryInitialText, setDictionaryInitialText] = useState("");
+  const [regeneratingCutId, setRegeneratingCutId] = useState<number | null>(null);
+
+  // Single image generation from CutList
+  const [generatingSingleImageCutId, setGeneratingSingleImageCutId] = useState<number | null>(null);
+
+  // Marketing framework for ChatGPT script generation
+  type MarketingFramework = "AIDMA" | "PASONA" | "QUEST" | "PAS" | "4P";
+  const [marketingFramework, setMarketingFramework] = useState<MarketingFramework>("AIDMA");
+
+  // Dialogue mode (single narrator vs two-person dialogue)
+  type DialogueMode = "single" | "dialogue";
+  const [dialogueMode, setDialogueMode] = useState<DialogueMode>("single");
 
   // Resize handlers
   const handleMouseMove = useCallback((e: MouseEvent) => {
@@ -137,6 +189,482 @@ export default function EditorPage() {
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [handleMouseMove, handleMouseUp]);
+
+  // Track if initial load is complete to prevent save on mount
+  const initialLoadComplete = useRef(false);
+
+  // LocalStorage persistence - Load on mount
+  useEffect(() => {
+    try {
+      const savedProject = localStorage.getItem("vg_editor_project");
+      if (savedProject) {
+        const parsed = JSON.parse(savedProject);
+        if (parsed.styleConfig) {
+          setStyleConfig(parsed.styleConfig);
+        }
+        if (parsed.videoTitle) {
+          setVideoTitle(parsed.videoTitle);
+        }
+        if (parsed.script) {
+          setScript(parsed.script);
+        }
+        console.log("[Editor] Loaded project from localStorage");
+      }
+      // Load URL history
+      const savedUrlHistory = localStorage.getItem("vg_url_history");
+      if (savedUrlHistory) {
+        setUrlHistory(JSON.parse(savedUrlHistory));
+        console.log("[Editor] Loaded URL history from localStorage");
+      }
+    } catch (e) {
+      console.error("[Editor] Failed to load from localStorage:", e);
+      // Clear corrupted data
+      try {
+        localStorage.removeItem("vg_editor_project");
+        console.log("[Editor] Cleared corrupted localStorage data");
+      } catch {}
+    }
+    // Mark initial load as complete after a short delay
+    setTimeout(() => {
+      initialLoadComplete.current = true;
+    }, 500);
+  }, []);
+
+  // Helper: Upload base64 image to Supabase and return URL
+  const uploadBase64ToSupabase = useCallback(async (base64: string): Promise<string> => {
+    if (!base64 || !base64.startsWith('data:image')) {
+      return '';
+    }
+    try {
+      const response = await fetch('/api/assets/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64, userId: 'editor' }),
+      });
+      if (!response.ok) {
+        console.error('[Editor] Failed to upload image to Supabase');
+        return '';
+      }
+      const data = await response.json();
+      return data.url || '';
+    } catch (e) {
+      console.error('[Editor] Upload error:', e);
+      return '';
+    }
+  }, []);
+
+  // LocalStorage persistence - Save on change (upload base64 to Supabase first)
+  useEffect(() => {
+    // Skip save during initial load to prevent quota exceeded on corrupted data
+    if (!initialLoadComplete.current) return;
+
+    // Only save if we have actual content
+    if (styleConfig.cuts.length > 0 && styleConfig.cuts.some(cut => cut.subtitle || cut.voiceText)) {
+      const saveToLocalStorage = async () => {
+        try {
+          // Upload base64 images to Supabase, keep existing Supabase URLs as-is
+          const processedCuts = await Promise.all(styleConfig.cuts.map(async (cut) => {
+            const isBase64Image = (url?: string) => url?.startsWith('data:image');
+            const isCloudUrl = (url?: string) => url?.startsWith('https://');
+
+            return {
+              ...cut,
+              // Upload base64 images to Supabase, keep cloud URLs
+              imageUrl: isCloudUrl(cut.imageUrl) ? cut.imageUrl :
+                        isBase64Image(cut.imageUrl) ? await uploadBase64ToSupabase(cut.imageUrl!) : '',
+              imageUrl16x9: isCloudUrl(cut.imageUrl16x9) ? cut.imageUrl16x9 :
+                            isBase64Image(cut.imageUrl16x9) ? await uploadBase64ToSupabase(cut.imageUrl16x9!) : '',
+              imageUrl9x16: isCloudUrl(cut.imageUrl9x16) ? cut.imageUrl9x16 :
+                            isBase64Image(cut.imageUrl9x16) ? await uploadBase64ToSupabase(cut.imageUrl9x16!) : '',
+              // Don't store base64 audio in localStorage
+              voiceUrl: cut.voiceUrl?.startsWith('data:') ? '' : cut.voiceUrl,
+            };
+          }));
+
+          // Check if any uploads happened (URLs changed from base64)
+          const hasUploads = processedCuts.some((cut, i) => {
+            const original = styleConfig.cuts[i];
+            return (cut.imageUrl !== original.imageUrl && cut.imageUrl?.startsWith('https://')) ||
+                   (cut.imageUrl16x9 !== original.imageUrl16x9 && cut.imageUrl16x9?.startsWith('https://')) ||
+                   (cut.imageUrl9x16 !== original.imageUrl9x16 && cut.imageUrl9x16?.startsWith('https://'));
+          });
+
+          // Update state with uploaded URLs to avoid re-uploading
+          if (hasUploads) {
+            setStyleConfig(prev => ({ ...prev, cuts: processedCuts }));
+            console.log('[Editor] Updated state with Supabase URLs');
+          }
+
+          const projectData = {
+            styleConfig: { ...styleConfig, cuts: processedCuts },
+            videoTitle,
+            script,
+            savedAt: new Date().toISOString(),
+          };
+
+          const jsonString = JSON.stringify(projectData);
+          // Only save if data is under 4MB (localStorage limit is ~5MB)
+          if (jsonString.length < 4 * 1024 * 1024) {
+            localStorage.setItem("vg_editor_project", jsonString);
+            console.log(`[Editor] Auto-saved project to localStorage (${(jsonString.length / 1024).toFixed(1)}KB)`);
+          } else {
+            console.warn(`[Editor] Project data too large (${(jsonString.length / 1024 / 1024).toFixed(1)}MB), skipping save`);
+          }
+        } catch (e: any) {
+          // Handle quota exceeded error gracefully
+          if (e.name === 'QuotaExceededError') {
+            console.warn("[Editor] LocalStorage quota exceeded, clearing old data");
+            try {
+              localStorage.removeItem("vg_editor_project");
+            } catch {}
+          } else {
+            console.error("[Editor] Failed to save to localStorage:", e);
+          }
+        }
+      };
+
+      // Debounce the save to avoid too many upload operations
+      const timeoutId = setTimeout(saveToLocalStorage, 2000);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [styleConfig, videoTitle, script, uploadBase64ToSupabase]);
+
+  // Close URL history dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showUrlHistory) {
+        const target = e.target as HTMLElement;
+        if (!target.closest('.url-history-container')) {
+          setShowUrlHistory(false);
+        }
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showUrlHistory]);
+
+  // Helper: Convert API scenes to CutConfig array
+  const convertScenesToCuts = useCallback((scenes: any[], totalDuration: number): CutConfig[] => {
+    const imageEffectMap: Record<string, ImageEffect> = {
+      zoomIn: "zoomIn", zoomOut: "zoomOut", panLeft: "panLeft", panRight: "panRight", static: "static",
+    };
+    const textAnimationMap: Record<string, TextAnimation> = {
+      typewriter: "typewriter", fadeIn: "fadeIn", slideUp: "slideUp", bounce: "bounce", none: "none",
+    };
+    const transitionMap: Record<string, SceneTransition> = {
+      fade: "fade", slide: "slide", zoom: "zoom", cut: "cut", dissolve: "dissolve", wipe: "fade",
+    };
+
+    let currentTime = 0;
+    return scenes.map((scene, index) => {
+      const sceneDuration = scene.duration || Math.ceil(totalDuration / scenes.length);
+      const startTime = currentTime;
+      const endTime = currentTime + sceneDuration;
+      currentTime = endTime;
+
+      const mainText = scene.main_text ? {
+        type: scene.main_text.type || "title",
+        lines: scene.main_text.lines || [],
+      } : undefined;
+
+      const images = (scene.image_prompts || [scene.image_prompt]).filter(Boolean).map((prompt: string, i: number) => ({
+        id: `img-cut-${index}-${i}`,
+        source: "generated" as const,
+        prompt,
+      }));
+
+      return {
+        id: index,
+        startTime,
+        endTime,
+        mainText,
+        subtitle: scene.subtitle || "",
+        voiceText: scene.voice_text || scene.avatar_script || "",
+        voiceStyle: scene.voice_style || "",
+        speaker: scene.speaker || "narrator",
+        voiceId: scene.voice_id || "",
+        images: images.length > 0 ? images : [],
+        imagePrompt: scene.image_prompts?.[0] || scene.image_prompt || "",
+        imageUrl: scene.imageUrl || "",
+        voiceUrl: scene.audioUrl || "",
+        assets: scene.assets || [],  // アセット（図形・アイコン・テキスト・Lottie・SVG）
+        imageEffect: imageEffectMap[scene.image_effect] || "zoomIn",
+        textAnimation: textAnimationMap[scene.text_animation] || "typewriter",
+        transition: transitionMap[scene.transition] || "fade",
+      };
+    });
+  }, []);
+
+  // Save to Supabase
+  const saveToSupabase = useCallback(async (scriptData: any, title: string, themeOrUrl: string, inputType: "theme" | "url") => {
+    if (!user?.id) {
+      console.log("[Editor] No user logged in, skipping Supabase save");
+      return null;
+    }
+
+    setIsSavingToDb(true);
+    setDbSaveStatus("saving");
+
+    try {
+      const response = await fetch("/api/vg-projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          title: title,
+          theme_text: inputType === "theme" ? themeOrUrl : undefined,
+          url_input: inputType === "url" ? themeOrUrl : undefined,
+          settings: {
+            ttsProvider,
+            selectedVoiceId,
+            generationMode: "auto",
+          },
+        }),
+      });
+
+      const data = await response.json();
+      if (data.project?.id) {
+        // Update project with scenes
+        await fetch("/api/vg-projects", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: data.project.id,
+            userId: user.id,
+            updates: {
+              scenes: scriptData.scenes,
+              status: "draft",
+              generation_step: "script",
+            },
+          }),
+        });
+
+        setCurrentProjectId(data.project.id);
+        setDbSaveStatus("saved");
+        console.log("[Editor] Saved to Supabase:", data.project.id);
+        return data.project.id;
+      }
+    } catch (error) {
+      console.error("[Editor] Failed to save to Supabase:", error);
+      setDbSaveStatus("error");
+    } finally {
+      setIsSavingToDb(false);
+    }
+    return null;
+  }, [user, ttsProvider, selectedVoiceId]);
+
+  // Save current project state to Supabase (for preserving generated audio/images)
+  const saveCurrentProjectToSupabase = useCallback(async (cutsOverride?: CutConfig[]) => {
+    if (!user?.id || !currentProjectId) {
+      console.log("[Editor] Cannot save: no user or project ID");
+      return false;
+    }
+
+    const cutsToSave = cutsOverride || styleConfig.cuts;
+
+    try {
+      // Convert cuts to scenes format for storage
+      const scenesToSave = cutsToSave.map((cut) => ({
+        duration: cut.endTime - cut.startTime,
+        subtitle: cut.subtitle || "",
+        voice_text: cut.voiceText || "",
+        voice_style: cut.voiceStyle || "",
+        speaker: cut.speaker || "narrator",
+        voice_id: cut.voiceId || "",
+        image_prompt: cut.imagePrompt || "",
+        image_effect: cut.imageEffect || "zoomIn",
+        text_animation: cut.textAnimation || "typewriter",
+        transition: cut.transition || "fade",
+        main_text: cut.mainText,
+        images: cut.images,
+        assets: cut.assets || [],  // アセット（図形・アイコン・テキスト・Lottie・SVG）
+        // Preserve generated URLs - 全てのアスペクト比の画像URLを保存
+        imageUrl: cut.imageUrl || "",
+        imageUrl16x9: cut.imageUrl16x9 || "",  // PC用画像
+        imageUrl9x16: cut.imageUrl9x16 || "",  // スマホ用画像
+        audioUrl: cut.voiceUrl || "",
+      }));
+
+      const response = await fetch("/api/vg-projects", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: currentProjectId,
+          userId: user.id,
+          updates: {
+            scenes: scenesToSave,
+            title: videoTitle,
+            settings: {
+              ttsProvider,
+              selectedVoiceId,
+              generationMode: "auto",
+            },
+          },
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        console.log("[Editor] Project saved with generated assets");
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("[Editor] Failed to save project:", error);
+      return false;
+    }
+  }, [user, currentProjectId, styleConfig.cuts, videoTitle, ttsProvider, selectedVoiceId]);
+
+  // Manual save handler
+  const handleManualSave = useCallback(async () => {
+    if (!currentProjectId) {
+      showToast("保存するプロジェクトがありません。まず台本を生成してください。", "warning");
+      return;
+    }
+
+    setIsSavingProject(true);
+    try {
+      const success = await saveCurrentProjectToSupabase();
+      if (success) {
+        setLastSavedAt(new Date());
+        showToast("プロジェクトを保存しました", "success");
+      } else {
+        showToast("保存に失敗しました", "error");
+      }
+    } finally {
+      setIsSavingProject(false);
+    }
+  }, [currentProjectId, saveCurrentProjectToSupabase]);
+
+  // Load projects from Supabase
+  const loadProjectsFromSupabase = useCallback(async () => {
+    if (!user?.id) {
+      showToast("プロジェクトを読み込むにはログインが必要です", "warning");
+      return;
+    }
+
+    setIsLoadingProjects(true);
+    try {
+      const response = await fetch(`/api/vg-projects?userId=${user.id}&limit=20`);
+      const data = await response.json();
+
+      if (data.projects) {
+        setSavedProjects(data.projects);
+        setShowProjectList(true);
+        console.log(`[Editor] Loaded ${data.projects.length} projects`);
+      }
+    } catch (error) {
+      console.error("[Editor] Failed to load projects:", error);
+      showToast("プロジェクトの読み込みに失敗しました", "error");
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }, [user]);
+
+  // Migrate old scene format to new CutConfig format
+  const migrateSceneToCurrentFormat = useCallback((scene: any, index: number, totalDuration: number, sceneCount: number): CutConfig => {
+    const sceneDuration = scene.duration || Math.ceil(totalDuration / sceneCount);
+    const startTime = index === 0 ? 0 : -1; // Will be recalculated
+
+    const imageEffectMap: Record<string, ImageEffect> = {
+      zoomIn: "zoomIn", zoomOut: "zoomOut", panLeft: "panLeft", panRight: "panRight", static: "static",
+      "zoom-in": "zoomIn", "zoom-out": "zoomOut", "pan-left": "panLeft", "pan-right": "panRight",
+    };
+    const textAnimationMap: Record<string, TextAnimation> = {
+      typewriter: "typewriter", fadeIn: "fadeIn", slideUp: "slideUp", bounce: "bounce", none: "none",
+      "fade-in": "fadeIn", "slide-up": "slideUp",
+    };
+    const transitionMap: Record<string, SceneTransition> = {
+      fade: "fade", slide: "slide", zoom: "zoom", cut: "cut", dissolve: "dissolve", wipe: "fade",
+    };
+
+    const mainText = scene.main_text ? {
+      type: scene.main_text.type || "title",
+      lines: scene.main_text.lines || [],
+    } : undefined;
+
+    const images = (scene.image_prompts || [scene.image_prompt]).filter(Boolean).map((prompt: string, i: number) => ({
+      id: `img-migrated-${index}-${i}`,
+      source: "generated" as const,
+      prompt,
+    }));
+
+    return {
+      id: index,
+      startTime: 0, // Will be recalculated
+      endTime: sceneDuration,
+      mainText,
+      subtitle: scene.subtitle || "",
+      voiceText: scene.voice_text || scene.avatar_script || scene.narration || "",
+      voiceStyle: scene.voice_style || "",
+      speaker: scene.speaker || "narrator",
+      voiceId: scene.voice_id || "",
+      images: images.length > 0 ? images : [],
+      imagePrompt: scene.image_prompts?.[0] || scene.image_prompt || "",
+      imageUrl: scene.imageUrl || "",
+      imageUrl16x9: scene.imageUrl16x9 || "",  // PC用画像を復元
+      imageUrl9x16: scene.imageUrl9x16 || "",  // スマホ用画像を復元
+      voiceUrl: scene.audioUrl || "",
+      imageEffect: imageEffectMap[scene.image_effect] || "zoomIn",
+      textAnimation: textAnimationMap[scene.text_animation] || "typewriter",
+      transition: transitionMap[scene.transition] || "fade",
+    };
+  }, []);
+
+  // Load a specific project
+  const loadProject = useCallback(async (project: any) => {
+    console.log("[Editor] Loading project:", project.id, project.title);
+
+    // Update title
+    setVideoTitle(project.title || "読み込んだプロジェクト");
+
+    // Get scenes from project
+    const scenes = project.scenes || [];
+    const totalDuration = project.total_duration || scenes.reduce((sum: number, s: any) => sum + (s.duration || 7), 0) || 60;
+
+    if (scenes.length === 0) {
+      showToast("このプロジェクトにはシーンデータがありません", "warning");
+      setShowProjectList(false);
+      return;
+    }
+
+    // Migrate scenes to current format
+    const newCuts: CutConfig[] = [];
+    let currentTime = 0;
+
+    for (let i = 0; i < scenes.length; i++) {
+      const cut = migrateSceneToCurrentFormat(scenes[i], i, totalDuration, scenes.length);
+      cut.startTime = currentTime;
+      cut.endTime = currentTime + (scenes[i].duration || Math.ceil(totalDuration / scenes.length));
+      currentTime = cut.endTime;
+      newCuts.push(cut);
+    }
+
+    // Calculate average scene duration
+    const avgSceneDuration = Math.round(currentTime / newCuts.length);
+
+    // Update style config
+    setStyleConfig((prev) => ({
+      ...prev,
+      totalDuration: currentTime,
+      sceneDuration: avgSceneDuration,
+      cuts: newCuts,
+    }));
+
+    // Combine voice text for script display
+    const fullScript = scenes
+      .map((s: any) => s.voice_text || s.avatar_script || s.narration || s.subtitle)
+      .filter(Boolean)
+      .join("\n");
+    setScript(fullScript);
+
+    // Set current project
+    setCurrentProjectId(project.id);
+    setShowProjectList(false);
+
+    console.log(`[Editor] Loaded ${newCuts.length} scenes from project`);
+    showToast(`プロジェクト「${project.title}」を読み込みました (${newCuts.length}シーン)`, "success");
+  }, [migrateSceneToCurrentFormat]);
 
   const startDragLeft = () => {
     isDraggingLeft.current = true;
@@ -282,117 +810,98 @@ export default function EditorPage() {
     }
   };
 
-  // Generate script from theme (as professional CM writer)
+  // Generate script from theme using ChatGPT with marketing frameworks
   const handleGenerateScript = async () => {
     if (!themeInput.trim()) return;
 
     setIsGeneratingScript(true);
+    setDbSaveStatus("idle");
     try {
-      const cutCount = calculateCutCount(styleConfig.totalDuration, styleConfig.sceneDuration);
-
-      const response = await fetch("/api/generate-script-from-theme", {
+      // Use ChatGPT API with marketing framework and dialogue mode
+      const response = await fetch("/api/generate-script-chatgpt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           theme: themeInput.trim(),
-          targetDuration: styleConfig.totalDuration,
-          cutCount,
-          style: "cm", // CM writer style
+          duration: styleConfig.totalDuration,
+          framework: marketingFramework,
+          model: "gpt-4o",
+          tone: "professional",
+          dialogueMode: dialogueMode,
         }),
       });
 
       const data = await response.json();
 
       if (data.success && data.script) {
-        // Update title
-        if (data.script.title) {
-          setVideoTitle(data.script.title);
+        const scriptData = data.script;
+
+        // Log cost info
+        if (data.usage) {
+          console.log(`[ChatGPT] Cost: $${data.usage.estimatedCostUSD?.toFixed(4)} (≈¥${data.usage.estimatedCostJPY?.toFixed(0)})`);
         }
 
-        // Combine script for display
-        const fullScript = data.script.scenes
-          ?.map((s: any) => s.avatar_script || s.narration || s.subtitle)
-          .join("\n") || data.script.script || "";
+        // Store JSON for inspection
+        setGeneratedJson(scriptData);
+        setShowJsonModal(true);
+
+        // Update title
+        if (scriptData.title) {
+          setVideoTitle(scriptData.title);
+        }
+
+        // Combine script for display (support both ChatGPT and Gemini formats)
+        const fullScript = scriptData.scenes
+          ?.map((s: any) => s.voiceText || s.avatar_script || s.voice_text || s.narration || s.subtitle)
+          .join("\n") || scriptData.script || "";
         setScript(fullScript);
 
-        // Update cuts with generated scenes
-        if (data.script.scenes && Array.isArray(data.script.scenes)) {
+        // ★ CRITICAL: Create NEW cuts based on actual scene count
+        // Normalize ChatGPT format to match expected format
+        const normalizedScenes = scriptData.scenes?.map((s: any) => ({
+          ...s,
+          avatar_script: s.voiceText || s.avatar_script || s.voice_text,
+          voice_text: s.voiceText || s.voice_text,
+          voice_style: s.voiceStyle || s.voice_style,
+          image_prompt: s.imagePrompt || s.image_prompt,
+          image_effect: s.imageEffect || s.image_effect || "zoomIn",
+          text_animation: s.textAnimation || s.text_animation || "typewriter",
+        }));
+
+        if (normalizedScenes && Array.isArray(normalizedScenes)) {
+          const newCuts = convertScenesToCuts(normalizedScenes, scriptData.totalDuration || scriptData.total_duration || styleConfig.totalDuration);
+          const newTotalDuration = scriptData.totalDuration || scriptData.total_duration || newCuts.reduce((sum, cut) => sum + (cut.endTime - cut.startTime), 0);
+          // Calculate average scene duration for settings sync
+          const avgSceneDuration = Math.round(newTotalDuration / newCuts.length);
+
           setStyleConfig((prev) => ({
             ...prev,
-            cuts: prev.cuts.map((cut, index) => {
-              const scene = data.script.scenes[index];
-              if (scene) {
-                // メインテキストのマッピング
-                const mainText = scene.main_text ? {
-                  type: scene.main_text.type || "title",
-                  lines: scene.main_text.lines || [],
-                } : undefined;
-
-                // 画像のマッピング
-                const images = (scene.image_prompts || [scene.image_prompt]).filter(Boolean).map((prompt: string, i: number) => ({
-                  id: `img-${cut.id}-${i}`,
-                  source: "generated" as const,
-                  prompt,
-                }));
-
-                // エフェクトのマッピング
-                const imageEffectMap: Record<string, ImageEffect> = {
-                  zoomIn: "zoomIn",
-                  zoomOut: "zoomOut",
-                  panLeft: "panLeft",
-                  panRight: "panRight",
-                  static: "static",
-                };
-                const textAnimationMap: Record<string, TextAnimation> = {
-                  typewriter: "typewriter",
-                  fadeIn: "fadeIn",
-                  slideUp: "slideUp",
-                  bounce: "bounce",
-                  none: "none",
-                };
-                const transitionMap: Record<string, SceneTransition> = {
-                  fade: "fade",
-                  slide: "slide",
-                  zoom: "zoom",
-                  cut: "cut",
-                  dissolve: "dissolve",
-                  wipe: "fade", // wipeはfadeにフォールバック
-                };
-
-                return {
-                  ...cut,
-                  mainText,
-                  subtitle: scene.subtitle || "",
-                  voiceText: scene.voice_text || scene.avatar_script || "",
-                  voiceStyle: scene.voice_style || "",  // 演技指導
-                  images: images.length > 0 ? images : cut.images,
-                  imagePrompt: scene.image_prompts?.[0] || scene.image_prompt || cut.imagePrompt,
-                  // エフェクトを適用
-                  imageEffect: imageEffectMap[scene.image_effect] || cut.imageEffect,
-                  textAnimation: textAnimationMap[scene.text_animation] || cut.textAnimation,
-                  transition: transitionMap[scene.transition] || cut.transition,
-                };
-              }
-              return cut;
-            }),
+            totalDuration: newTotalDuration,
+            sceneDuration: avgSceneDuration,
+            cuts: newCuts,
           }));
+
+          console.log(`[Editor] Created ${newCuts.length} cuts from ${normalizedScenes.length} scenes (avg: ${avgSceneDuration}s, framework: ${marketingFramework})`);
         }
+
+        // Save to Supabase
+        await saveToSupabase(scriptData, scriptData.title || videoTitle, themeInput.trim(), "theme");
       } else {
         console.error("Failed to generate script:", data.error);
-        alert("台本生成に失敗しました: " + (data.error || "Unknown error"));
+        showToast("台本生成に失敗しました: " + (data.error || "Unknown error"), "error");
       }
     } catch (error) {
       console.error("Error generating script:", error);
-      alert("台本生成中にエラーが発生しました");
+      showToast("台本生成中にエラーが発生しました", "error");
     } finally {
       setIsGeneratingScript(false);
     }
   };
 
-  // Generate script from URL
+  // Generate script from URL (using ChatGPT with framework + dialogue mode)
   const handleGenerateFromUrl = async () => {
     if (!urlInput.trim()) {
-      alert("URLを入力してください");
+      showToast("URLを入力してください", "warning");
       return;
     }
 
@@ -402,86 +911,118 @@ export default function EditorPage() {
       normalizedUrl = `https://${normalizedUrl}`;
     }
 
-    setIsGeneratingFromUrl(true);
-    try {
-      const cutCount = calculateCutCount(styleConfig.totalDuration, styleConfig.sceneDuration);
+    // Save URL to history (deduplicated, max 20 items)
+    const saveUrlToHistory = (url: string) => {
+      const newHistory = [url, ...urlHistory.filter(u => u !== url)].slice(0, 20);
+      setUrlHistory(newHistory);
+      localStorage.setItem("vg_url_history", JSON.stringify(newHistory));
+      console.log("[Editor] Saved URL to history:", url);
+    };
 
-      const response = await fetch("/api/generate-script-from-url", {
+    setIsGeneratingFromUrl(true);
+    setDbSaveStatus("idle");
+    try {
+      // Save URL to history at the start
+      saveUrlToHistory(normalizedUrl);
+      // Step 1: Extract content from URL
+      console.log(`[URL] Extracting content from: ${normalizedUrl}`);
+      const extractResponse = await fetch("/api/extract-url-content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: normalizedUrl }),
+      });
+      const extractData = await extractResponse.json();
+
+      if (!extractData.success) {
+        throw new Error(extractData.error || "Failed to extract URL content");
+      }
+
+      // Build URL content summary for ChatGPT
+      const urlContentSummary = `
+【タイトル】${extractData.analysis?.title || extractData.rawContent?.title || ""}
+【説明】${extractData.analysis?.description || ""}
+【特徴】${(extractData.analysis?.keyPoints || []).join(", ")}
+【ターゲット】${extractData.analysis?.targetAudience || ""}
+【USP】${(extractData.analysis?.uniqueSellingPoints || []).join(", ")}
+【CTA】${extractData.analysis?.callToAction || ""}
+`;
+
+      // Step 2: Generate script using ChatGPT with extracted content
+      const response = await fetch("/api/generate-script-chatgpt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: normalizedUrl,
-          targetDuration: styleConfig.totalDuration,
-          cutCount,
+          theme: extractData.analysis?.title || normalizedUrl,
+          targetAudience: extractData.analysis?.targetAudience || "一般消費者",
+          duration: styleConfig.totalDuration,
+          framework: marketingFramework,
+          model: "gpt-4o",
+          tone: "professional",
+          dialogueMode: dialogueMode,
+          urlContent: urlContentSummary,
         }),
       });
 
       const data = await response.json();
 
       if (data.success && data.script) {
-        // Update title
-        if (data.script.title) {
-          setVideoTitle(data.script.title);
+        const scriptData = data.script;
+
+        // Log cost info
+        if (data.usage) {
+          console.log(`[ChatGPT] Cost: $${data.usage.estimatedCostUSD?.toFixed(4)} (≈¥${data.usage.estimatedCostJPY?.toFixed(0)})`);
         }
 
-        // Combine script for display
-        const fullScript = data.script.scenes
-          ?.map((s: any) => s.avatar_script || s.narration || s.subtitle)
-          .join("\n") || data.script.script || "";
+        // Store JSON for inspection
+        setGeneratedJson(scriptData);
+        setShowJsonModal(true);
+
+        // Update title
+        if (scriptData.title) {
+          setVideoTitle(scriptData.title);
+        }
+
+        // Combine script for display (support both ChatGPT and Gemini formats)
+        const fullScript = scriptData.scenes
+          ?.map((s: any) => s.voiceText || s.avatar_script || s.voice_text || s.narration || s.subtitle)
+          .join("\n") || scriptData.script || "";
         setScript(fullScript);
 
-        // Update cuts with generated scenes (same logic as handleGenerateScript)
-        if (data.script.scenes && Array.isArray(data.script.scenes)) {
+        // ★ CRITICAL: Normalize ChatGPT format
+        const normalizedScenes = scriptData.scenes?.map((s: any) => ({
+          ...s,
+          avatar_script: s.voiceText || s.avatar_script || s.voice_text,
+          voice_text: s.voiceText || s.voice_text,
+          voice_style: s.voiceStyle || s.voice_style,
+          image_prompt: s.imagePrompt || s.image_prompt,
+          image_effect: s.imageEffect || s.image_effect || "zoomIn",
+          text_animation: s.textAnimation || s.text_animation || "typewriter",
+        }));
+
+        if (normalizedScenes && Array.isArray(normalizedScenes)) {
+          const newCuts = convertScenesToCuts(normalizedScenes, scriptData.totalDuration || scriptData.total_duration || styleConfig.totalDuration);
+          const newTotalDuration = scriptData.totalDuration || scriptData.total_duration || newCuts.reduce((sum, cut) => sum + (cut.endTime - cut.startTime), 0);
+          const avgSceneDuration = Math.round(newTotalDuration / newCuts.length);
+
           setStyleConfig((prev) => ({
             ...prev,
-            cuts: prev.cuts.map((cut, index) => {
-              const scene = data.script.scenes[index];
-              if (scene) {
-                const mainText = scene.main_text ? {
-                  type: scene.main_text.type || "title",
-                  lines: scene.main_text.lines || [],
-                } : undefined;
-
-                const images = (scene.image_prompts || [scene.image_prompt]).filter(Boolean).map((prompt: string, i: number) => ({
-                  id: `img-${cut.id}-${i}`,
-                  source: "generated" as const,
-                  prompt,
-                }));
-
-                const imageEffectMap: Record<string, ImageEffect> = {
-                  zoomIn: "zoomIn", zoomOut: "zoomOut", panLeft: "panLeft", panRight: "panRight", static: "static",
-                };
-                const textAnimationMap: Record<string, TextAnimation> = {
-                  typewriter: "typewriter", fadeIn: "fadeIn", slideUp: "slideUp", bounce: "bounce", none: "none",
-                };
-                const transitionMap: Record<string, SceneTransition> = {
-                  fade: "fade", slide: "slide", zoom: "zoom", cut: "cut", dissolve: "dissolve", wipe: "fade",
-                };
-
-                return {
-                  ...cut,
-                  mainText,
-                  subtitle: scene.subtitle || "",
-                  voiceText: scene.voice_text || scene.avatar_script || "",
-                  voiceStyle: scene.voice_style || "",  // 演技指導
-                  images: images.length > 0 ? images : cut.images,
-                  imagePrompt: scene.image_prompts?.[0] || scene.image_prompt || cut.imagePrompt,
-                  imageEffect: imageEffectMap[scene.image_effect] || cut.imageEffect,
-                  textAnimation: textAnimationMap[scene.text_animation] || cut.textAnimation,
-                  transition: transitionMap[scene.transition] || cut.transition,
-                };
-              }
-              return cut;
-            }),
+            totalDuration: newTotalDuration,
+            sceneDuration: avgSceneDuration,
+            cuts: newCuts,
           }));
+
+          console.log(`[Editor] Created ${newCuts.length} cuts from ${normalizedScenes.length} scenes (URL, framework: ${marketingFramework}, dialogue: ${dialogueMode})`);
         }
+
+        // Save to Supabase
+        await saveToSupabase(scriptData, scriptData.title || videoTitle, normalizedUrl, "url");
       } else {
         console.error("Failed to generate script from URL:", data.error);
-        alert("URLからの台本生成に失敗しました: " + (data.error || "Unknown error"));
+        showToast("URLからの台本生成に失敗しました: " + (data.error || "Unknown error"), "error");
       }
     } catch (error) {
       console.error("Error generating script from URL:", error);
-      alert("URLからの台本生成中にエラーが発生しました");
+      showToast("URLからの台本生成中にエラーが発生しました", "error");
     } finally {
       setIsGeneratingFromUrl(false);
     }
@@ -506,11 +1047,11 @@ export default function EditorPage() {
         // Also set as theme input for generation
         setThemeInput(data.text);
       } else {
-        alert("音声の文字起こしに失敗しました: " + (data.error || "Unknown error"));
+        showToast("音声の文字起こしに失敗しました: " + (data.error || "Unknown error"), "error");
       }
     } catch (error) {
       console.error("Transcription error:", error);
-      alert("文字起こし中にエラーが発生しました");
+      showToast("文字起こし中にエラーが発生しました", "error");
     } finally {
       setIsProcessing(false);
     }
@@ -519,7 +1060,7 @@ export default function EditorPage() {
   // Generate from transcribed text
   const handleGenerateFromVoice = async () => {
     if (!transcribedText.trim()) {
-      alert("音声を録音してください");
+      showToast("音声を録音してください", "warning");
       return;
     }
     // Use the transcribed text as theme
@@ -550,58 +1091,375 @@ export default function EditorPage() {
     }));
   }, []);
 
-  // Generate audio for all scenes
+  // Load custom dictionary from localStorage
+  const getCustomDictionary = () => {
+    try {
+      const saved = localStorage.getItem("reading-dictionary-custom");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  // Generate audio for all scenes using batch API with timesheet
+  // タイムシート方式：全音声を一括生成→実際の尺でタイムシート作成→ギャップなし
   const handleGenerateAudio = async () => {
-    const cutsWithVoice = styleConfig.cuts.filter(cut => cut.voiceText && cut.voiceText.trim());
-    if (cutsWithVoice.length === 0) {
-      alert("音声テキストが設定されているシーンがありません");
+    const cutsNeedingAudio = styleConfig.cuts.filter(cut =>
+      cut.voiceText && cut.voiceText.trim() && !cut.voiceUrl
+    );
+    if (cutsNeedingAudio.length === 0) {
+      showToast("音声が必要なシーンがありません（全て生成済みまたはテキストなし）", "info");
       return;
     }
 
     setIsGeneratingAudio(true);
-    setAudioProgress({ current: 0, total: cutsWithVoice.length });
+    setAudioProgress({ current: 0, total: cutsNeedingAudio.length });
+
+    // Get custom dictionary entries
+    const customDictionary = getCustomDictionary();
 
     try {
+      // Prepare scenes for batch generation
+      const scenesForBatch = styleConfig.cuts
+        .filter(cut => cut.voiceText && cut.voiceText.trim() && !cut.voiceUrl)
+        .map(cut => ({
+          id: cut.id,
+          text: cut.voiceText!,
+          voiceStyle: cut.voiceStyle,
+          speaker: cut.speaker
+        }));
+
+      console.log(`[Editor] Starting batch audio generation for ${scenesForBatch.length} scenes`);
+
+      // Call batch API to generate all audio and get timesheet
+      const response = await fetch("/api/generate-audio-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenes: scenesForBatch,
+          voiceConfig: {
+            provider: ttsProvider,
+            voice: selectedVoiceId,
+            secondaryVoice: secondaryVoiceId,
+            model: ttsProvider === "gemini" ? selectedGeminiModel : undefined,
+          },
+          customDictionary,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        throw new Error(result.error || "Batch audio generation failed");
+      }
+
+      console.log(`[Editor] Batch complete! Total duration: ${result.totalDuration.toFixed(2)}s`);
+
+      // Build updated cuts using timesheet data
+      // タイムシートに基づいて全カットの時間を再計算（ギャップなし）
       const updatedCuts = [...styleConfig.cuts];
+      const timesheetMap = new Map(result.timesheet.map((entry: any) => [entry.id, entry]));
 
-      for (let i = 0; i < styleConfig.cuts.length; i++) {
-        const cut = styleConfig.cuts[i];
-        if (!cut.voiceText || !cut.voiceText.trim()) continue;
-
-        setAudioProgress(prev => ({ ...prev, current: prev.current + 1 }));
-
-        try {
-          const response = await fetch("/api/generate-voice", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text: cut.voiceText,
-              config: {
-                provider: ttsProvider,
-                voice: selectedVoiceId,
-                style: cut.voiceStyle,  // 演技指導を渡す
-                model: ttsProvider === "gemini" ? selectedGeminiModel : undefined,
-              },
-            }),
-          });
-
-          const data = await response.json();
-          if (data.success && data.audioUrl) {
-            updatedCuts[i] = { ...updatedCuts[i], voiceUrl: data.audioUrl };
-          }
-        } catch (error) {
-          console.error(`Failed to generate audio for scene ${cut.id}:`, error);
+      // First pass: update cuts that have new audio
+      for (const entry of result.timesheet) {
+        const cutIndex = updatedCuts.findIndex(c => c.id === entry.id);
+        if (cutIndex !== -1) {
+          updatedCuts[cutIndex] = {
+            ...updatedCuts[cutIndex],
+            voiceUrl: entry.audioUrl,
+          };
         }
       }
 
+      // Second pass: recalculate all timings based on actual audio durations
+      // 全カットの時間を音声の実際の尺に基づいて再計算
+      let currentTime = 0;
+      for (let i = 0; i < updatedCuts.length; i++) {
+        const cut = updatedCuts[i];
+        const timesheetEntry = timesheetMap.get(cut.id) as { duration: number; audioUrl: string } | undefined;
+
+        // Use actual audio duration if available, otherwise use existing duration
+        const duration = timesheetEntry
+          ? timesheetEntry.duration
+          : (cut.endTime - cut.startTime);
+
+        updatedCuts[i] = {
+          ...cut,
+          startTime: currentTime,
+          endTime: currentTime + duration,
+        };
+
+        currentTime += duration; // 次のシーンは即座に開始（ギャップなし）
+      }
+
       setStyleConfig(prev => ({ ...prev, cuts: updatedCuts }));
-      alert(`音声生成完了: ${audioProgress.current}/${cutsWithVoice.length} シーン`);
+      setAudioProgress({ current: scenesForBatch.length, total: scenesForBatch.length });
+
+      // Auto-save to Supabase after generation
+      if (currentProjectId) {
+        await saveCurrentProjectToSupabase(updatedCuts);
+        console.log("[Editor] Auto-saved after audio generation");
+      }
+
+      showToast(`音声生成完了: ${result.timesheet.length} シーン（総尺: ${result.totalDuration.toFixed(1)}秒）`, "success");
     } catch (error) {
       console.error("Audio generation error:", error);
-      alert("音声生成中にエラーが発生しました");
+      showToast("音声生成中にエラーが発生しました", "error");
     } finally {
       setIsGeneratingAudio(false);
       setAudioProgress({ current: 0, total: 0 });
+    }
+  };
+
+  // Regenerate audio for a single cut
+  const handleRegenerateSingleAudio = async (cutId: number) => {
+    const cutIndex = styleConfig.cuts.findIndex(c => c.id === cutId);
+    if (cutIndex === -1) return;
+
+    const cut = styleConfig.cuts[cutIndex];
+    if (!cut.voiceText || !cut.voiceText.trim()) {
+      showToast("音声テキストがありません", "warning");
+      return;
+    }
+
+    setRegeneratingCutId(cutId);
+    setIsGeneratingAudio(true);
+    setAudioProgress({ current: 0, total: 1 });
+
+    const customDictionary = getCustomDictionary();
+    // カット固有のvoiceIdがあればそれを使用、なければ話者タイプで判定
+    const isSecondaryVoice = ["customer", "guest", "interviewee"].includes(cut.speaker || "");
+    const voiceToUse = cut.voiceId || (isSecondaryVoice ? secondaryVoiceId : selectedVoiceId);
+
+    try {
+      setAudioProgress({ current: 1, total: 1 });
+      const response = await fetch("/api/generate-voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: cut.voiceText,
+          config: {
+            provider: ttsProvider,
+            voice: voiceToUse,
+            style: cut.voiceStyle,
+            model: ttsProvider === "gemini" ? selectedGeminiModel : undefined,
+          },
+          customDictionary,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success && data.audioUrl) {
+        const updatedCuts = [...styleConfig.cuts];
+        // Update voiceUrl and adjust duration based on actual audio length
+        const audioDuration = data.duration || (updatedCuts[cutIndex].endTime - updatedCuts[cutIndex].startTime);
+        const newEndTime = updatedCuts[cutIndex].startTime + audioDuration + 0.3;
+        updatedCuts[cutIndex] = {
+          ...updatedCuts[cutIndex],
+          voiceUrl: data.audioUrl,
+          endTime: newEndTime
+        };
+        // Shift subsequent cuts to maintain continuity
+        for (let j = cutIndex + 1; j < updatedCuts.length; j++) {
+          const prevEnd = updatedCuts[j - 1].endTime;
+          const currentDuration = updatedCuts[j].endTime - updatedCuts[j].startTime;
+          updatedCuts[j] = {
+            ...updatedCuts[j],
+            startTime: prevEnd,
+            endTime: prevEnd + currentDuration
+          };
+        }
+        setStyleConfig(prev => ({ ...prev, cuts: updatedCuts }));
+
+        // Auto-save
+        if (currentProjectId) {
+          await saveCurrentProjectToSupabase(updatedCuts);
+        }
+        showToast(`シーン #${cutId} の音声を再生成しました`, "success");
+      } else {
+        showToast("音声生成に失敗しました", "error");
+      }
+    } catch (error) {
+      console.error(`Failed to regenerate audio for cut ${cutId}:`, error);
+      showToast("音声生成中にエラーが発生しました", "error");
+    } finally {
+      setRegeneratingCutId(null);
+      setIsGeneratingAudio(false);
+      setAudioProgress({ current: 0, total: 0 });
+    }
+  };
+
+  // Generate images for all scenes (3 images in parallel)
+  const handleGenerateImages = async () => {
+    // Find cuts that need image generation (have prompt but no image yet)
+    const cutsToGenerate: { index: number; prompt: string }[] = [];
+
+    styleConfig.cuts.forEach((cut, index) => {
+      const prompt = cut.imagePrompt || (cut.images && cut.images[0]?.prompt);
+      if (prompt && prompt.trim() && !cut.imageUrl) {
+        cutsToGenerate.push({ index, prompt: prompt.trim() });
+      }
+    });
+
+    if (cutsToGenerate.length === 0) {
+      showToast("生成が必要なシーンがありません", "info");
+      return;
+    }
+
+    setIsGeneratingImages(true);
+    setImageProgress({ current: 0, total: cutsToGenerate.length });
+
+    const CONCURRENT_LIMIT = 3; // 3枚同時生成
+    const updatedCuts = [...styleConfig.cuts];
+    let completedCount = 0;
+
+    try {
+      // Process in batches of 3
+      for (let batchStart = 0; batchStart < cutsToGenerate.length; batchStart += CONCURRENT_LIMIT) {
+        const batch = cutsToGenerate.slice(batchStart, batchStart + CONCURRENT_LIMIT);
+
+        // Set first index in current batch as generating indicator
+        setCurrentGeneratingIndex(batch[0].index);
+
+        console.log(`[Editor] Generating batch: scenes ${batch.map(b => b.index + 1).join(", ")}`);
+
+        // Generate all images in this batch concurrently (both aspect ratios)
+        const batchPromises = batch.map(async ({ index, prompt }) => {
+          try {
+            const response = await fetch("/api/generate-image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                prompt,
+                userId: user?.id || "anonymous",
+                model: "flash",
+                aspectRatio,  // 現在のアスペクト比
+                generateBoth: true,  // 両方のアスペクト比を生成
+              }),
+            });
+
+            const data = await response.json();
+            if (response.ok && data.imageUrl) {
+              return {
+                index,
+                imageUrl: data.imageUrl,
+                imageUrl16x9: data.imageUrl16x9 || null,
+                imageUrl9x16: data.imageUrl9x16 || null,
+                success: true
+              };
+            } else {
+              console.error(`Failed to generate image for scene ${index + 1}:`, data.error || data.details || "Unknown error");
+              return { index, imageUrl: null, imageUrl16x9: null, imageUrl9x16: null, success: false };
+            }
+          } catch (error) {
+            console.error(`Failed to generate image for scene ${index + 1}:`, error);
+            return { index, imageUrl: null, imageUrl16x9: null, imageUrl9x16: null, success: false };
+          }
+        });
+
+        // Wait for all images in this batch to complete
+        const results = await Promise.all(batchPromises);
+
+        // Update cuts with results (save both aspect ratio URLs)
+        results.forEach(result => {
+          if (result.success && result.imageUrl) {
+            updatedCuts[result.index] = {
+              ...updatedCuts[result.index],
+              imageUrl: result.imageUrl,
+              imageUrl16x9: result.imageUrl16x9 || result.imageUrl,
+              imageUrl9x16: result.imageUrl9x16 || result.imageUrl,
+            };
+          }
+          completedCount++;
+        });
+
+        // Update state progressively so user sees images appearing
+        setStyleConfig(prev => ({ ...prev, cuts: [...updatedCuts] }));
+        setImageProgress({ current: completedCount, total: cutsToGenerate.length });
+
+        // Auto-save after each batch to preserve progress (途中で止まっても保存される)
+        if (currentProjectId) {
+          await saveCurrentProjectToSupabase(updatedCuts);
+          console.log(`[Editor] Auto-saved batch (${completedCount}/${cutsToGenerate.length})`);
+        }
+      }
+
+      const generatedCount = updatedCuts.filter(c => c.imageUrl || c.imageUrl16x9 || c.imageUrl9x16).length;
+
+      showToast(`画像生成完了: ${generatedCount} シーン`, "success");
+    } catch (error) {
+      console.error("Image generation error:", error);
+      showToast("画像生成中にエラーが発生しました", "error");
+    } finally {
+      setIsGeneratingImages(false);
+      setImageProgress({ current: 0, total: 0 });
+      setCurrentGeneratingIndex(null);
+    }
+  };
+
+  // Generate single image from CutList
+  const handleGenerateSingleImage = async (cutId: number) => {
+    const cutIndex = styleConfig.cuts.findIndex(c => c.id === cutId);
+    if (cutIndex === -1) return;
+
+    const cut = styleConfig.cuts[cutIndex];
+    const prompt = cut.imagePrompt || cut.images?.[0]?.prompt;
+
+    if (!prompt?.trim()) {
+      showToast("画像プロンプトを入力してください", "info");
+      return;
+    }
+
+    setGeneratingSingleImageCutId(cutId);
+
+    try {
+      const response = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt,
+          userId: user?.id || "anonymous",
+          model: "flash",
+          aspectRatio,  // 現在のアスペクト比
+          generateBoth: true,  // 両方のアスペクト比を生成
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error("Failed to generate image:", data.error || data.details);
+        showToast(`画像生成に失敗しました: ${data.error || "不明なエラー"}`, "error");
+        return;
+      }
+
+      if (data.imageUrl) {
+        // Update the cut with both aspect ratio images
+        const updatedCuts = [...styleConfig.cuts];
+        updatedCuts[cutIndex] = {
+          ...updatedCuts[cutIndex],
+          imageUrl: data.imageUrl,
+          imageUrl16x9: data.imageUrl16x9 || data.imageUrl,
+          imageUrl9x16: data.imageUrl9x16 || data.imageUrl,
+        };
+        setStyleConfig(prev => ({ ...prev, cuts: updatedCuts }));
+
+        // Auto-save to Supabase
+        if (currentProjectId) {
+          await saveCurrentProjectToSupabase(updatedCuts);
+          console.log("[Editor] Auto-saved after single image generation");
+        }
+
+        showToast(`シーン ${cutIndex + 1} の画像を生成しました`, "success");
+      } else {
+        console.error("Failed to generate image: No imageUrl in response", data);
+        showToast("画像生成に失敗しました", "error");
+      }
+    } catch (error) {
+      console.error("Single image generation error:", error);
+      showToast("画像生成中にエラーが発生しました", "error");
+    } finally {
+      setGeneratingSingleImageCutId(null);
     }
   };
 
@@ -646,30 +1504,61 @@ export default function EditorPage() {
     return mapping[trans] || "fade";
   };
 
-  // Convert style config to VideoProps for preview
-  const getVideoProps = useCallback((): VideoProps => {
-    const scenes: Scene[] = styleConfig.cuts.map((cut) => ({
-      duration: cut.endTime - cut.startTime,
-      avatar_script: cut.subtitle || `シーン ${cut.id}`,
-      subtitle: cut.subtitle || `シーン ${cut.id} のテキスト`,
-      image_prompt: cut.imagePrompt || "abstract background",
-      imageUrl: cut.imageUrl,
-      emotion: "neutral" as const,
-      transition: mapTransition(cut.transition),
-      animation: {
-        imageEffect: mapImageEffect(cut.imageEffect),
-        textEntrance: mapTextAnimation(cut.textAnimation),
-        sceneEntrance: cut.transition === "fade" ? "fade" : "slide",
-      },
-    }));
+  // Helper function to create scenes for a specific aspect ratio
+  const createScenesForAspectRatio = useCallback((targetAspectRatio: "16:9" | "9:16"): Scene[] => {
+    return styleConfig.cuts.map((cut) => {
+      // アスペクト比に応じた画像URLを選択
+      const selectedImageUrl = targetAspectRatio === "9:16"
+        ? (cut.imageUrl9x16 || cut.imageUrl)
+        : (cut.imageUrl16x9 || cut.imageUrl);
 
+      return {
+        duration: cut.endTime - cut.startTime,
+        avatar_script: cut.subtitle || `シーン ${cut.id}`,
+        subtitle: cut.subtitle || `シーン ${cut.id} のテキスト`,
+        image_prompt: cut.imagePrompt || "abstract background",
+        imageUrl: selectedImageUrl,
+        audioUrl: cut.voiceUrl,  // 音声URL
+        assets: cut.assets || [],  // アセット（図形・アイコン・テキスト等）
+        emotion: "neutral" as const,
+        transition: mapTransition(cut.transition),
+        animation: {
+          imageEffect: mapImageEffect(cut.imageEffect),
+          textEntrance: mapTextAnimation(cut.textAnimation),
+          sceneEntrance: cut.transition === "fade" ? "fade" : "slide",
+        },
+      };
+    });
+  }, [styleConfig.cuts]);
+
+  // 画像があればSceneComponentを使用（textOnly: false）
+  // 画像がなければTextOnlySceneを使用（textOnly: true）
+  const hasAnyImage = useMemo(() => styleConfig.cuts.some(cut =>
+    cut.imageUrl || cut.imageUrl16x9 || cut.imageUrl9x16
+  ), [styleConfig.cuts]);
+
+  // Convert style config to VideoProps for preview (memoized to prevent unnecessary re-renders)
+  // プレビュー用（プレビューアスペクト比を使用）
+  const videoProps = useMemo((): VideoProps => {
     return {
       title: videoTitle,
-      scenes,
-      aspectRatio: "9:16",
-      textOnly: true,
+      scenes: createScenesForAspectRatio(previewAspectRatio),
+      aspectRatio: previewAspectRatio,
+      textOnly: !hasAnyImage,
+      showSubtitle: styleConfig.showSubtitle,
     };
-  }, [styleConfig.cuts, videoTitle]);
+  }, [createScenesForAspectRatio, videoTitle, previewAspectRatio, hasAnyImage, styleConfig.showSubtitle]);
+
+  // レンダリング用（出力アスペクト比を使用）
+  const renderVideoProps = useMemo((): VideoProps => {
+    return {
+      title: videoTitle,
+      scenes: createScenesForAspectRatio(aspectRatio),
+      aspectRatio: aspectRatio,
+      textOnly: !hasAnyImage,
+      showSubtitle: styleConfig.showSubtitle,
+    };
+  }, [createScenesForAspectRatio, videoTitle, aspectRatio, hasAnyImage, styleConfig.showSubtitle]);
 
   // Render to MP4
   const handleRender = async () => {
@@ -678,7 +1567,7 @@ export default function EditorPage() {
     setRenderError(null);
 
     try {
-      const videoConfig = getVideoProps();
+      const videoConfig = renderVideoProps;  // レンダリング用は出力アスペクト比を使用
 
       const response = await fetch("/api/render", {
         method: "POST",
@@ -723,27 +1612,81 @@ export default function EditorPage() {
             </Link>
             <h1 className="text-lg font-bold">動画スタイルエディタ</h1>
           </div>
-          <button
-            onClick={handleRender}
-            disabled={isRendering || !hasContent}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-              isRendering || !hasContent
-                ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                : "bg-green-600 text-white hover:bg-green-500"
-            }`}
-          >
-            {isRendering ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                レンダリング中...
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4" />
-                MP4書き出し
-              </>
+          <div className="flex items-center gap-2">
+            {/* Load Project Button */}
+            <button
+              onClick={loadProjectsFromSupabase}
+              disabled={isLoadingProjects}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-colors ${
+                isLoadingProjects
+                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                  : "bg-blue-600 text-white hover:bg-blue-500"
+              }`}
+            >
+              {isLoadingProjects ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  読込中...
+                </>
+              ) : (
+                <>
+                  <Database className="w-4 h-4" />
+                  プロジェクト読込
+                </>
+              )}
+            </button>
+            {/* Save Project Button */}
+            {currentProjectId && (
+              <button
+                onClick={handleManualSave}
+                disabled={isSavingProject}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-colors ${
+                  isSavingProject
+                    ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                    : "bg-purple-600 text-white hover:bg-purple-500"
+                }`}
+              >
+                {isSavingProject ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    保存
+                    {lastSavedAt && (
+                      <span className="text-xs opacity-70">
+                        ({lastSavedAt.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })})
+                      </span>
+                    )}
+                  </>
+                )}
+              </button>
             )}
-          </button>
+            {/* Render Button */}
+            <button
+              onClick={handleRender}
+              disabled={isRendering || !hasContent}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                isRendering || !hasContent
+                  ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                  : "bg-green-600 text-white hover:bg-green-500"
+              }`}
+            >
+              {isRendering ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  レンダリング中...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  MP4書き出し
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -792,6 +1735,65 @@ export default function EditorPage() {
               </button>
             </div>
 
+            {/* Shared: Framework & Dialogue Mode Selection */}
+            <section className="rounded-lg p-3 border bg-gradient-to-br from-gray-800/50 to-gray-900/50 border-gray-600/30 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-gray-400 font-medium">マーケティングフレームワーク</span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setDialogueMode("single")}
+                    className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+                      dialogueMode === "single"
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-700 text-gray-400 hover:bg-gray-600"
+                    }`}
+                  >
+                    一人語り
+                  </button>
+                  <button
+                    onClick={() => setDialogueMode("dialogue")}
+                    className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+                      dialogueMode === "dialogue"
+                        ? "bg-pink-600 text-white"
+                        : "bg-gray-700 text-gray-400 hover:bg-gray-600"
+                    }`}
+                  >
+                    二人掛け合い
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { id: "AIDMA", label: "AIDMA", desc: "注意→興味→欲求→記憶→行動" },
+                  { id: "PASONA", label: "PASONA", desc: "問題→煽り→解決→絞込→行動" },
+                  { id: "QUEST", label: "QUEST", desc: "適格→理解→教育→刺激→移行" },
+                  { id: "PAS", label: "PAS", desc: "問題→煽動→解決" },
+                  { id: "4P", label: "4P", desc: "約束→描写→証明→後押し" },
+                ].map((fw) => (
+                  <button
+                    key={fw.id}
+                    onClick={() => setMarketingFramework(fw.id as MarketingFramework)}
+                    title={fw.desc}
+                    className={`px-2 py-1 text-xs rounded transition-colors ${
+                      marketingFramework === fw.id
+                        ? "bg-purple-600 text-white"
+                        : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    }`}
+                  >
+                    {fw.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-500">
+                {marketingFramework === "AIDMA" && "注意→興味→欲求→記憶→行動"}
+                {marketingFramework === "PASONA" && "問題→煽り→解決→絞込→行動"}
+                {marketingFramework === "QUEST" && "適格→理解→教育→刺激→移行"}
+                {marketingFramework === "PAS" && "問題→煽動→解決（シンプル）"}
+                {marketingFramework === "4P" && "約束→描写→証明→後押し"}
+                {dialogueMode === "dialogue" && " ｜ 二人の掛け合い形式"}
+              </p>
+            </section>
+
             {/* Input Area based on mode */}
             <section className={`rounded-lg p-3 border ${
               inputMode === "theme"
@@ -804,12 +1806,12 @@ export default function EditorPage() {
               {inputMode === "theme" && (
                 <div className="space-y-2">
                   <h3 className="text-xs font-medium text-purple-300 mb-2 flex items-center gap-2">
-                    <Wand2 className="w-3 h-3" /> AIで台本を自動生成
+                    <Wand2 className="w-3 h-3" /> AIで台本を自動生成 (GPT-4o)
                   </h3>
                   <Textarea
                     value={themeInput}
                     onChange={(e) => setThemeInput(e.target.value)}
-                    placeholder="動画のテーマを入力してください...&#10;例: 初心者向けプログラミング入門"
+                    placeholder="動画のテーマを入力してください...&#10;例: AIプログラミング学習アプリ CodeMaster の60秒CM"
                     className="w-full px-3 py-2 text-sm bg-gray-800/80 border border-purple-500/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[80px] resize-none"
                   />
                   <button
@@ -842,13 +1844,87 @@ export default function EditorPage() {
                   <h3 className="text-xs font-medium text-green-300 mb-2 flex items-center gap-2">
                     <Globe className="w-3 h-3" /> URLから台本を生成
                   </h3>
-                  <input
-                    type="text"
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder="example.com/article"
-                    className="w-full px-3 py-2 text-sm bg-gray-800/80 border border-green-500/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
+                  <div className="relative url-history-container">
+                    <input
+                      type="text"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      onFocus={() => urlHistory.length > 0 && setShowUrlHistory(true)}
+                      placeholder="example.com/article"
+                      className="w-full px-3 py-2 text-sm bg-gray-800/80 border border-green-500/50 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    {/* URL History Dropdown */}
+                    {showUrlHistory && urlHistory.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-gray-800 border border-green-500/30 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-700">
+                          <span className="text-[10px] text-gray-400">履歴 ({urlHistory.length})</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowUrlHistory(false);
+                            }}
+                            className="text-gray-500 hover:text-white text-xs"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        {urlHistory.map((url, index) => (
+                          <button
+                            key={index}
+                            onClick={() => {
+                              setUrlInput(url);
+                              setShowUrlHistory(false);
+                            }}
+                            className="w-full px-3 py-2 text-left text-xs text-gray-300 hover:bg-green-900/30 hover:text-white truncate transition-colors"
+                            title={url}
+                          >
+                            {url}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => {
+                            setUrlHistory([]);
+                            localStorage.removeItem("vg_url_history");
+                            setShowUrlHistory(false);
+                          }}
+                          className="w-full px-3 py-1.5 text-[10px] text-red-400 hover:bg-red-900/20 border-t border-gray-700"
+                        >
+                          履歴をクリア
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {/* Quick history buttons (show last 3) */}
+                  {urlHistory.length > 0 && !showUrlHistory && (
+                    <div className="flex flex-wrap gap-1">
+                      {urlHistory.slice(0, 3).map((url, index) => {
+                        let displayName = url;
+                        try {
+                          displayName = new URL(url).hostname;
+                        } catch {
+                          displayName = url.slice(0, 20);
+                        }
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => setUrlInput(url)}
+                            className="px-2 py-0.5 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-green-800/50 truncate max-w-[120px]"
+                            title={url}
+                          >
+                            {displayName}
+                          </button>
+                        );
+                      })}
+                      {urlHistory.length > 3 && (
+                        <button
+                          onClick={() => setShowUrlHistory(true)}
+                          className="px-2 py-0.5 text-[10px] bg-gray-700 text-gray-400 rounded hover:bg-gray-600"
+                        >
+                          +{urlHistory.length - 3}件
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <button
                     onClick={handleGenerateFromUrl}
                     disabled={isGeneratingFromUrl || !urlInput.trim()}
@@ -965,6 +2041,181 @@ export default function EditorPage() {
               </div>
             </section>
 
+            {/* Image Generation Section */}
+            <section className="bg-gradient-to-br from-orange-900/50 to-amber-900/50 rounded-lg p-3 border border-orange-500/30">
+              <h3 className="text-xs font-medium text-orange-300 mb-2 flex items-center gap-2">
+                <span>🖼️</span> 画像生成
+              </h3>
+
+              {/* Aspect Ratio Selection (PC / スマホ) */}
+              <div className="mb-3">
+                <label className="text-xs text-orange-300/70 mb-1 block">動画サイズ</label>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setAspectRatio("16:9")}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors ${
+                      aspectRatio === "16:9"
+                        ? "bg-orange-500 text-white"
+                        : "bg-gray-700 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    <span>🖥️</span>
+                    <span>PC用 (16:9)</span>
+                  </button>
+                  <button
+                    onClick={() => setAspectRatio("9:16")}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-xs font-medium transition-colors ${
+                      aspectRatio === "9:16"
+                        ? "bg-orange-500 text-white"
+                        : "bg-gray-700 text-gray-400 hover:text-white"
+                    }`}
+                  >
+                    <span>📱</span>
+                    <span>スマホ用 (9:16)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Progress indicator with thumbnails */}
+              {(() => {
+                const totalWithPrompt = styleConfig.cuts.filter(c => c.imagePrompt?.trim() || c.images?.[0]?.prompt).length;
+                const generatedCount = styleConfig.cuts.filter(c => c.imageUrl).length;
+                const pendingCount = totalWithPrompt - generatedCount;
+                const progressPercent = totalWithPrompt > 0 ? Math.round((generatedCount / totalWithPrompt) * 100) : 0;
+                return (
+                  <div className="mb-3 space-y-2">
+                    {/* Text progress */}
+                    <div className="flex justify-between text-xs">
+                      <span className="text-orange-300/70">
+                        {generatedCount}/{totalWithPrompt} 生成済み
+                      </span>
+                      {pendingCount > 0 && (
+                        <span className="text-orange-400/60">
+                          残り {pendingCount} シーン
+                        </span>
+                      )}
+                    </div>
+                    {/* Progress bar */}
+                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-500 ease-out"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                    {/* Thumbnail grid */}
+                    <div className="grid grid-cols-6 gap-1.5 mt-2">
+                      {styleConfig.cuts.map((cut, index) => {
+                        const hasPrompt = cut.imagePrompt?.trim() || cut.images?.[0]?.prompt;
+                        const isGenerating = isGeneratingImages && currentGeneratingIndex === index;
+                        const isGenerated = !!cut.imageUrl;
+                        const isPending = hasPrompt && !isGenerated && !isGenerating;
+
+                        return (
+                          <div
+                            key={cut.id}
+                            className={`relative aspect-video rounded overflow-hidden border transition-all duration-300 ${
+                              isGenerating
+                                ? "border-orange-400 ring-2 ring-orange-400/50 animate-pulse"
+                                : isGenerated
+                                  ? "border-green-500/50"
+                                  : hasPrompt
+                                    ? "border-gray-600"
+                                    : "border-gray-700/50 opacity-40"
+                            }`}
+                            title={`シーン ${index + 1}${isGenerating ? " - 生成中..." : isGenerated ? " - 完了" : isPending ? " - 待機中" : " - プロンプトなし"}`}
+                          >
+                            {isGenerated && cut.imageUrl ? (
+                              <img
+                                src={cut.imageUrl}
+                                alt={`シーン ${index + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : isGenerating ? (
+                              <div className="w-full h-full bg-gradient-to-br from-orange-900/80 to-amber-900/80 flex items-center justify-center">
+                                <Loader2 className="w-3 h-3 text-orange-300 animate-spin" />
+                              </div>
+                            ) : hasPrompt ? (
+                              <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                                <span className="text-[8px] text-gray-500">待機</span>
+                              </div>
+                            ) : (
+                              <div className="w-full h-full bg-gray-900 flex items-center justify-center">
+                                <span className="text-[8px] text-gray-600">-</span>
+                              </div>
+                            )}
+                            {/* Scene number badge */}
+                            <div className={`absolute top-0 left-0 px-1 text-[8px] font-medium ${
+                              isGenerating
+                                ? "bg-orange-500 text-white"
+                                : isGenerated
+                                  ? "bg-green-600/80 text-white"
+                                  : "bg-gray-800/80 text-gray-400"
+                            }`}>
+                              {index + 1}
+                            </div>
+                            {/* Status icon */}
+                            {isGenerated && (
+                              <div className="absolute bottom-0.5 right-0.5">
+                                <Check className="w-2.5 h-2.5 text-green-400" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Current generating scene info */}
+                    {isGeneratingImages && currentGeneratingIndex !== null && (
+                      <div className="mt-2 p-2 bg-orange-950/50 rounded border border-orange-500/30 animate-pulse">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 text-orange-400 animate-spin" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-orange-300 font-medium">
+                              シーン {currentGeneratingIndex + 1} を生成中...
+                            </p>
+                            <p className="text-[10px] text-orange-400/70 truncate">
+                              {styleConfig.cuts[currentGeneratingIndex]?.imagePrompt?.slice(0, 50) ||
+                               styleConfig.cuts[currentGeneratingIndex]?.images?.[0]?.prompt?.slice(0, 50)}...
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              <button
+                onClick={handleGenerateImages}
+                disabled={isGeneratingImages || !styleConfig.cuts.some(c => (c.imagePrompt?.trim() || c.images?.[0]?.prompt) && !c.imageUrl)}
+                className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  isGeneratingImages || !styleConfig.cuts.some(c => (c.imagePrompt?.trim() || c.images?.[0]?.prompt) && !c.imageUrl)
+                    ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                    : "bg-gradient-to-r from-orange-600 to-amber-600 text-white hover:from-orange-500 hover:to-amber-500"
+                }`}
+              >
+                {isGeneratingImages ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    生成中 {imageProgress.current}/{imageProgress.total}
+                  </>
+                ) : styleConfig.cuts.every(c => !c.imagePrompt?.trim() && !c.images?.[0]?.prompt) ? (
+                  <>
+                    <span>🎨</span>
+                    プロンプトなし
+                  </>
+                ) : styleConfig.cuts.filter(c => c.imageUrl).length === styleConfig.cuts.filter(c => c.imagePrompt?.trim() || c.images?.[0]?.prompt).length ? (
+                  <>
+                    <span>✓</span>
+                    全シーン生成完了
+                  </>
+                ) : (
+                  <>
+                    <span>🎨</span>
+                    未生成シーンの画像生成
+                  </>
+                )}
+              </button>
+            </section>
+
             {/* Audio Generation Section */}
             <section className="bg-gradient-to-br from-green-900/50 to-teal-900/50 rounded-lg p-3 border border-green-500/30">
               <h3 className="text-xs font-medium text-green-300 mb-2 flex items-center gap-2">
@@ -975,12 +2226,22 @@ export default function EditorPage() {
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs text-green-300/70">音声エンジン</label>
-                  <Link
-                    href="/voice-test"
-                    className="text-[10px] text-green-400 hover:text-green-300 underline"
-                  >
-                    音声テスト →
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowDictionaryModal(true)}
+                      className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300"
+                      title="読み辞書"
+                    >
+                      <Book className="w-3 h-3" />
+                      辞書
+                    </button>
+                    <Link
+                      href="/voice-test"
+                      className="text-[10px] text-green-400 hover:text-green-300 underline"
+                    >
+                      音声テスト →
+                    </Link>
+                  </div>
                 </div>
                 <div className="flex gap-1">
                   <button
@@ -1048,9 +2309,11 @@ export default function EditorPage() {
                 </div>
               )}
 
-              {/* Voice Selection */}
+              {/* Voice Selection - メイン話者 */}
               <div className="mb-3">
-                <label className="text-xs text-green-300/70 mb-1 block">ボイス</label>
+                <label className="text-xs text-green-300/70 mb-1 block">
+                  メイン話者（ナレーター/ホスト）
+                </label>
                 <div className="grid grid-cols-2 gap-1">
                   {getVoiceOptionsForProvider(ttsProvider).map((voice) => (
                     <button
@@ -1072,19 +2335,67 @@ export default function EditorPage() {
                 </div>
               </div>
 
-              <div className="text-xs text-green-300/70 mb-2">
-                {styleConfig.cuts.filter(c => c.voiceText?.trim()).length} シーンに音声あり
-                {styleConfig.cuts.filter(c => c.voiceUrl).length > 0 && (
-                  <span className="ml-1 text-green-400">
-                    ({styleConfig.cuts.filter(c => c.voiceUrl).length} 済)
-                  </span>
-                )}
+              {/* Voice Selection - 第2話者 */}
+              <div className="mb-3">
+                <label className="text-xs text-green-300/70 mb-1 block">
+                  第2話者（ゲスト/お客様の声）
+                </label>
+                <div className="grid grid-cols-2 gap-1">
+                  {getVoiceOptionsForProvider(ttsProvider).map((voice) => (
+                    <button
+                      key={`secondary-${voice.id}`}
+                      onClick={() => setSecondaryVoiceId(voice.id)}
+                      className={`py-1.5 px-2 rounded text-xs transition-colors text-left ${
+                        secondaryVoiceId === voice.id
+                          ? "bg-orange-500 text-white"
+                          : "bg-gray-700/50 text-gray-300 hover:bg-gray-600"
+                      }`}
+                      title={voice.description}
+                    >
+                      <span className="font-medium">{voice.name}</span>
+                      <span className="text-[10px] opacity-70 ml-1">
+                        {voice.gender === "female" ? "♀" : "♂"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  ※ 台本で「customer」「guest」等に設定されたシーンで使用
+                </p>
               </div>
+
+              {/* Progress indicator */}
+              {(() => {
+                const totalWithText = styleConfig.cuts.filter(c => c.voiceText?.trim()).length;
+                const generatedCount = styleConfig.cuts.filter(c => c.voiceUrl).length;
+                const pendingCount = totalWithText - generatedCount;
+                const progressPercent = totalWithText > 0 ? Math.round((generatedCount / totalWithText) * 100) : 0;
+                return (
+                  <div className="mb-2 space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-green-300/70">
+                        {generatedCount}/{totalWithText} 生成済み
+                      </span>
+                      {pendingCount > 0 && (
+                        <span className="text-green-400/60">
+                          残り {pendingCount} シーン
+                        </span>
+                      )}
+                    </div>
+                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-green-500 to-teal-500 transition-all duration-300"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
               <button
                 onClick={handleGenerateAudio}
-                disabled={isGeneratingAudio || !styleConfig.cuts.some(c => c.voiceText?.trim())}
+                disabled={isGeneratingAudio || !styleConfig.cuts.some(c => c.voiceText?.trim() && !c.voiceUrl)}
                 className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  isGeneratingAudio || !styleConfig.cuts.some(c => c.voiceText?.trim())
+                  isGeneratingAudio || !styleConfig.cuts.some(c => c.voiceText?.trim() && !c.voiceUrl)
                     ? "bg-gray-700 text-gray-500 cursor-not-allowed"
                     : "bg-gradient-to-r from-green-600 to-teal-600 text-white hover:from-green-500 hover:to-teal-500"
                 }`}
@@ -1092,12 +2403,22 @@ export default function EditorPage() {
                 {isGeneratingAudio ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    {audioProgress.current}/{audioProgress.total}
+                    生成中 {audioProgress.current}/{audioProgress.total}
+                  </>
+                ) : styleConfig.cuts.every(c => !c.voiceText?.trim()) ? (
+                  <>
+                    <Volume2 className="w-3 h-3" />
+                    音声テキストなし
+                  </>
+                ) : styleConfig.cuts.filter(c => c.voiceUrl).length === styleConfig.cuts.filter(c => c.voiceText?.trim()).length ? (
+                  <>
+                    <span>✓</span>
+                    全シーン生成完了
                   </>
                 ) : (
                   <>
                     <Volume2 className="w-3 h-3" />
-                    全シーン音声生成
+                    未生成シーンの音声生成
                   </>
                 )}
               </button>
@@ -1134,6 +2455,14 @@ export default function EditorPage() {
                 onUpdateAllCuts={handleUpdateAllCuts}
                 currentTime={currentTime}
                 onSeekToCut={handleSeekToCut}
+                onRegenerateAudio={handleRegenerateSingleAudio}
+                onOpenDictionary={() => {
+                  setDictionaryInitialText("");
+                  setShowDictionaryModal(true);
+                }}
+                regeneratingCutId={regeneratingCutId}
+                onGenerateImage={handleGenerateSingleImage}
+                generatingImageCutId={generatingSingleImageCutId}
               />
             )}
           </div>
@@ -1160,13 +2489,37 @@ export default function EditorPage() {
               <span>🎬</span> プレビュー
             </h3>
 
+            {/* Preview Aspect Ratio Tabs */}
+            <div className="flex gap-1 mb-3 bg-gray-800 p-1 rounded-lg">
+              <button
+                onClick={() => setPreviewAspectRatio("9:16")}
+                className={`flex-1 py-1.5 px-2 text-xs font-medium rounded transition-colors ${
+                  previewAspectRatio === "9:16"
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-400 hover:text-white hover:bg-gray-700"
+                }`}
+              >
+                📱 スマホ (9:16)
+              </button>
+              <button
+                onClick={() => setPreviewAspectRatio("16:9")}
+                className={`flex-1 py-1.5 px-2 text-xs font-medium rounded transition-colors ${
+                  previewAspectRatio === "16:9"
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-400 hover:text-white hover:bg-gray-700"
+                }`}
+              >
+                🖥️ PC (16:9)
+              </button>
+            </div>
+
             {styleConfig.cuts.length > 0 ? (
               <VideoPreview
-                videoProps={getVideoProps()}
+                videoProps={videoProps}
                 onTimeUpdate={setCurrentTime}
               />
             ) : (
-              <div className="aspect-[9/16] bg-gray-800 rounded-lg flex items-center justify-center">
+              <div className={`${previewAspectRatio === "9:16" ? "aspect-[9/16]" : "aspect-video"} bg-gray-800 rounded-lg flex items-center justify-center`}>
                 <p className="text-gray-500 text-center text-sm">
                   カットを生成すると<br />プレビューが表示されます
                 </p>
@@ -1218,6 +2571,201 @@ export default function EditorPage() {
           </div>
         </div>
       </div>
+
+      {/* JSON Check Modal */}
+      {showJsonModal && generatedJson && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-gray-700">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <div className="flex items-center gap-3">
+                <Eye className="w-5 h-5 text-blue-400" />
+                <h2 className="text-lg font-bold">生成されたJSON確認</h2>
+                {dbSaveStatus === "saved" && (
+                  <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded">
+                    <Database className="w-3 h-3" />
+                    <Check className="w-3 h-3" />
+                    DB保存済み
+                  </span>
+                )}
+                {dbSaveStatus === "saving" && (
+                  <span className="flex items-center gap-1 text-xs text-yellow-400 bg-yellow-900/30 px-2 py-1 rounded">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    保存中...
+                  </span>
+                )}
+                {dbSaveStatus === "error" && (
+                  <span className="flex items-center gap-1 text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded">
+                    DB保存失敗
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowJsonModal(false)}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-hidden flex">
+              {/* Left: Summary */}
+              <div className="w-1/3 border-r border-gray-700 p-4 overflow-y-auto">
+                <h3 className="text-sm font-medium text-gray-400 mb-3">サマリー</h3>
+                <div className="space-y-3">
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">タイトル</div>
+                    <div className="text-sm font-medium">{generatedJson.title || "未設定"}</div>
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">総尺</div>
+                    <div className="text-sm font-medium">{generatedJson.total_duration || 0}秒</div>
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">シーン数</div>
+                    <div className="text-sm font-medium">{generatedJson.scenes?.length || 0}シーン</div>
+                  </div>
+                  <div className="bg-gray-800 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">エフェクト確認</div>
+                    <div className="space-y-1 mt-1">
+                      {generatedJson.scenes?.map((s: any, i: number) => (
+                        <div key={i} className="text-xs flex justify-between">
+                          <span className="text-gray-500">#{i + 1}</span>
+                          <span className="text-blue-400">{s.image_effect || "?"}</span>
+                          <span className="text-green-400">{s.transition || "?"}</span>
+                          <span className="text-purple-400">{s.text_animation || "?"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {currentProjectId && (
+                    <div className="bg-green-900/30 border border-green-700 rounded-lg p-3">
+                      <div className="text-xs text-green-400">プロジェクトID</div>
+                      <div className="text-xs font-mono text-green-300 break-all">{currentProjectId}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: Raw JSON */}
+              <div className="flex-1 p-4 overflow-y-auto">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-gray-400">Raw JSON</h3>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(generatedJson, null, 2));
+                      showToast("JSONをクリップボードにコピーしました", "success");
+                    }}
+                    className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+                  >
+                    コピー
+                  </button>
+                </div>
+                <pre className="text-xs bg-gray-950 p-4 rounded-lg overflow-x-auto font-mono text-green-400 whitespace-pre-wrap">
+                  {JSON.stringify(generatedJson, null, 2)}
+                </pre>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-700">
+              <button
+                onClick={() => setShowJsonModal(false)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors"
+              >
+                閉じてエディタへ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Project List Modal */}
+      {showProjectList && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col border border-gray-700">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <div className="flex items-center gap-3">
+                <Database className="w-5 h-5 text-blue-400" />
+                <h2 className="text-lg font-bold">保存済みプロジェクト</h2>
+              </div>
+              <button
+                onClick={() => setShowProjectList(false)}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {savedProjects.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  保存されたプロジェクトがありません
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {savedProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      onClick={() => loadProject(project)}
+                      className="w-full text-left p-4 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors border border-gray-700 hover:border-blue-500"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-medium text-white">{project.title || "無題のプロジェクト"}</h3>
+                        <span className="text-xs text-gray-500">
+                          {new Date(project.updated_at).toLocaleDateString("ja-JP")}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-gray-400">
+                        {project.scenes && (
+                          <span>{project.scenes.length}シーン</span>
+                        )}
+                        {project.theme_text && (
+                          <span className="truncate max-w-[200px]">テーマ: {project.theme_text}</span>
+                        )}
+                        {project.url_input && (
+                          <span className="truncate max-w-[200px]">URL: {project.url_input}</span>
+                        )}
+                        <span className={`px-2 py-0.5 rounded ${
+                          project.status === "completed" ? "bg-green-900 text-green-400" :
+                          project.status === "generating" ? "bg-yellow-900 text-yellow-400" :
+                          "bg-gray-700 text-gray-400"
+                        }`}>
+                          {project.status === "completed" ? "完了" :
+                           project.status === "generating" ? "生成中" : "下書き"}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-700">
+              <button
+                onClick={() => setShowProjectList(false)}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reading Dictionary Modal */}
+      <ReadingDictionaryModal
+        isOpen={showDictionaryModal}
+        onClose={() => {
+          setShowDictionaryModal(false);
+          setDictionaryInitialText("");
+        }}
+        initialText={dictionaryInitialText}
+      />
     </div>
   );
 }

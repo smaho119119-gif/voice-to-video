@@ -3,6 +3,10 @@ import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 // TTS Provider Types
 type TTSProvider = "openai" | "google" | "elevenlabs" | "gemini";
@@ -16,8 +20,22 @@ interface VoiceConfig {
     model?: string; // Gemini TTS model: "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-tts", etc.
 }
 
-// Helper to save audio locally and return URL (fast local storage)
-async function saveAudioLocally(base64Audio: string, format: string = "mp3"): Promise<string> {
+// Helper to get audio duration using ffprobe
+async function getAudioDuration(filePath: string): Promise<number> {
+    try {
+        const { stdout } = await execAsync(
+            `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
+        );
+        const duration = parseFloat(stdout.trim());
+        return isNaN(duration) ? 0 : duration;
+    } catch (error) {
+        console.error("Failed to get audio duration:", error);
+        return 0;
+    }
+}
+
+// Helper to save audio locally and return URL + duration (fast local storage)
+async function saveAudioLocally(base64Audio: string, format: string = "mp3"): Promise<{ url: string; duration: number }> {
     try {
         const audioDir = path.join(process.cwd(), "public", "audio-cache");
         await mkdir(audioDir, { recursive: true });
@@ -28,11 +46,14 @@ async function saveAudioLocally(base64Audio: string, format: string = "mp3"): Pr
         const buffer = Buffer.from(base64Audio, "base64");
         await writeFile(filePath, buffer);
 
-        return `/audio-cache/${fileName}`;
+        // Get audio duration using ffprobe
+        const duration = await getAudioDuration(filePath);
+
+        return { url: `/audio-cache/${fileName}`, duration };
     } catch (error) {
         console.error("Failed to save audio locally:", error);
         // Fallback to base64 if local save fails
-        return `data:audio/${format};base64,${base64Audio}`;
+        return { url: `data:audio/${format};base64,${base64Audio}`, duration: 0 };
     }
 }
 
@@ -58,12 +79,32 @@ const ELEVENLABS_VOICES = {
     "XrExE9yKIg1WjnnlVkGX": "Japanese Female 1"
 };
 
+import { applyReadingDictionary } from "@/lib/reading-dictionary";
+
+// カスタム辞書エントリーの型
+interface CustomDictionaryEntry {
+    id: string;
+    pattern: string;
+    reading: string;
+    note: string;
+}
+
 export async function POST(req: NextRequest) {
     try {
-        const { text, config }: { text: string; config: VoiceConfig } = await req.json();
+        const { text, config, customDictionary }: {
+            text: string;
+            config: VoiceConfig;
+            customDictionary?: CustomDictionaryEntry[];
+        } = await req.json();
 
         if (!text) {
             return NextResponse.json({ error: "Text is required" }, { status: 400 });
+        }
+
+        // 読み辞書を適用（組み込み + カスタム）
+        const processedText = applyReadingDictionary(text, customDictionary);
+        if (processedText !== text) {
+            console.log("[Voice API] Reading dictionary applied:", text.slice(0, 50), "→", processedText.slice(0, 50));
         }
 
         const provider = config?.provider || "openai";
@@ -73,13 +114,13 @@ export async function POST(req: NextRequest) {
 
         switch (provider) {
             case "openai":
-                return await generateOpenAIVoice(text, config);
+                return await generateOpenAIVoice(processedText, config);
             case "google":
-                return await generateGoogleVoice(text, config);
+                return await generateGoogleVoice(processedText, config);
             case "elevenlabs":
-                return await generateElevenLabsVoice(text, config);
+                return await generateElevenLabsVoice(processedText, config);
             case "gemini":
-                return await generateGeminiVoice(text, config);
+                return await generateGeminiVoice(processedText, config);
             default:
                 return NextResponse.json({ error: "Unknown TTS provider" }, { status: 400 });
         }
@@ -112,12 +153,13 @@ async function generateOpenAIVoice(text: string, config: VoiceConfig) {
 
     const audioBuffer = await response.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString("base64");
-    const audioUrl = await saveAudioLocally(base64Audio, "mp3");
+    const { url: audioUrl, duration } = await saveAudioLocally(base64Audio, "mp3");
 
     return NextResponse.json({
         success: true,
         provider: "openai",
         audioUrl,
+        duration,
         format: "mp3",
         voice: voice
     });
@@ -161,12 +203,13 @@ async function generateGoogleVoice(text: string, config: VoiceConfig) {
     }
 
     const data = await response.json();
-    const audioUrl = await saveAudioLocally(data.audioContent, "mp3");
+    const { url: audioUrl, duration } = await saveAudioLocally(data.audioContent, "mp3");
 
     return NextResponse.json({
         success: true,
         provider: "google",
         audioUrl,
+        duration,
         format: "mp3",
         voice: voice
     });
@@ -208,12 +251,13 @@ async function generateElevenLabsVoice(text: string, config: VoiceConfig) {
 
     const audioBuffer = await response.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString("base64");
-    const audioUrl = await saveAudioLocally(base64Audio, "mp3");
+    const { url: audioUrl, duration } = await saveAudioLocally(base64Audio, "mp3");
 
     return NextResponse.json({
         success: true,
         provider: "elevenlabs",
         audioUrl,
+        duration,
         format: "mp3",
         voice: voiceId
     });
@@ -322,12 +366,13 @@ ${text}`;
                         const pcmBuffer = Buffer.from(audioData, "base64");
                         const wavBuffer = pcmToWav(pcmBuffer, sampleRate);
                         const wavBase64 = wavBuffer.toString("base64");
-                        const audioUrl = await saveAudioLocally(wavBase64, "wav");
+                        const { url: audioUrl, duration } = await saveAudioLocally(wavBase64, "wav");
 
                         return NextResponse.json({
                             success: true,
                             provider: "gemini",
                             audioUrl,
+                            duration,
                             format: "wav",
                             voice: voiceName
                         });
@@ -335,12 +380,13 @@ ${text}`;
 
                     // Other formats (mp3, wav, etc.) - use as-is
                     const format = mimeType.split("/")[1]?.split(";")[0] || "wav";
-                    const audioUrl = await saveAudioLocally(audioData, format);
+                    const { url: audioUrl, duration } = await saveAudioLocally(audioData, format);
 
                     return NextResponse.json({
                         success: true,
                         provider: "gemini",
                         audioUrl,
+                        duration,
                         format,
                         voice: voiceName
                     });
