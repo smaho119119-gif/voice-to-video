@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { uploadAudioToStorage } from "@/lib/supabase";
+import { writeFile, mkdir } from "fs/promises";
+import path from "path";
 
 // TTS Provider Types
 type TTSProvider = "openai" | "google" | "elevenlabs" | "gemini";
@@ -15,15 +16,24 @@ interface VoiceConfig {
     model?: string; // Gemini TTS model: "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-tts", etc.
 }
 
-// Helper to upload audio and return URL
-async function uploadAndReturnUrl(base64Audio: string, userId: string, format: string = "mp3"): Promise<string> {
-    const storageUrl = await uploadAudioToStorage(base64Audio, userId, format);
-    if (storageUrl) {
-        return storageUrl;
+// Helper to save audio locally and return URL (fast local storage)
+async function saveAudioLocally(base64Audio: string, format: string = "mp3"): Promise<string> {
+    try {
+        const audioDir = path.join(process.cwd(), "public", "audio-cache");
+        await mkdir(audioDir, { recursive: true });
+
+        const fileName = `voice_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${format}`;
+        const filePath = path.join(audioDir, fileName);
+
+        const buffer = Buffer.from(base64Audio, "base64");
+        await writeFile(filePath, buffer);
+
+        return `/audio-cache/${fileName}`;
+    } catch (error) {
+        console.error("Failed to save audio locally:", error);
+        // Fallback to base64 if local save fails
+        return `data:audio/${format};base64,${base64Audio}`;
     }
-    // Fallback to base64 if storage fails
-    console.warn("Audio storage upload failed, using base64 fallback");
-    return `data:audio/${format};base64,${base64Audio}`;
 }
 
 // OpenAI TTS voices
@@ -50,27 +60,26 @@ const ELEVENLABS_VOICES = {
 
 export async function POST(req: NextRequest) {
     try {
-        const { text, config, userId }: { text: string; config: VoiceConfig; userId?: string } = await req.json();
+        const { text, config }: { text: string; config: VoiceConfig } = await req.json();
 
         if (!text) {
             return NextResponse.json({ error: "Text is required" }, { status: 400 });
         }
 
         const provider = config?.provider || "openai";
-        const userIdForStorage = userId || "anonymous";
 
         // Debug: Log the voice configuration
         console.log("[Voice API] Provider:", provider, "Voice:", config?.voice);
 
         switch (provider) {
             case "openai":
-                return await generateOpenAIVoice(text, config, userIdForStorage);
+                return await generateOpenAIVoice(text, config);
             case "google":
-                return await generateGoogleVoice(text, config, userIdForStorage);
+                return await generateGoogleVoice(text, config);
             case "elevenlabs":
-                return await generateElevenLabsVoice(text, config, userIdForStorage);
+                return await generateElevenLabsVoice(text, config);
             case "gemini":
-                return await generateGeminiVoice(text, config, userIdForStorage);
+                return await generateGeminiVoice(text, config);
             default:
                 return NextResponse.json({ error: "Unknown TTS provider" }, { status: 400 });
         }
@@ -83,7 +92,7 @@ export async function POST(req: NextRequest) {
     }
 }
 
-async function generateOpenAIVoice(text: string, config: VoiceConfig, userId: string) {
+async function generateOpenAIVoice(text: string, config: VoiceConfig) {
     if (!process.env.OPENAI_API_KEY) {
         return NextResponse.json({ error: "OpenAI API Key is missing" }, { status: 500 });
     }
@@ -103,7 +112,7 @@ async function generateOpenAIVoice(text: string, config: VoiceConfig, userId: st
 
     const audioBuffer = await response.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString("base64");
-    const audioUrl = await uploadAndReturnUrl(base64Audio, userId, "mp3");
+    const audioUrl = await saveAudioLocally(base64Audio, "mp3");
 
     return NextResponse.json({
         success: true,
@@ -114,7 +123,7 @@ async function generateOpenAIVoice(text: string, config: VoiceConfig, userId: st
     });
 }
 
-async function generateGoogleVoice(text: string, config: VoiceConfig, userId: string) {
+async function generateGoogleVoice(text: string, config: VoiceConfig) {
     if (!process.env.GOOGLE_TTS_API_KEY) {
         return NextResponse.json({ error: "Google TTS API Key is missing" }, { status: 500 });
     }
@@ -152,7 +161,7 @@ async function generateGoogleVoice(text: string, config: VoiceConfig, userId: st
     }
 
     const data = await response.json();
-    const audioUrl = await uploadAndReturnUrl(data.audioContent, userId, "mp3");
+    const audioUrl = await saveAudioLocally(data.audioContent, "mp3");
 
     return NextResponse.json({
         success: true,
@@ -163,7 +172,7 @@ async function generateGoogleVoice(text: string, config: VoiceConfig, userId: st
     });
 }
 
-async function generateElevenLabsVoice(text: string, config: VoiceConfig, userId: string) {
+async function generateElevenLabsVoice(text: string, config: VoiceConfig) {
     if (!process.env.ELEVENLABS_API_KEY) {
         return NextResponse.json({ error: "ElevenLabs API Key is missing" }, { status: 500 });
     }
@@ -199,7 +208,7 @@ async function generateElevenLabsVoice(text: string, config: VoiceConfig, userId
 
     const audioBuffer = await response.arrayBuffer();
     const base64Audio = Buffer.from(audioBuffer).toString("base64");
-    const audioUrl = await uploadAndReturnUrl(base64Audio, userId, "mp3");
+    const audioUrl = await saveAudioLocally(base64Audio, "mp3");
 
     return NextResponse.json({
         success: true,
@@ -244,7 +253,7 @@ function pcmToWav(pcmData: Buffer, sampleRate: number = 24000, channels: number 
 }
 
 // Gemini 2.5 TTS Preview (natural, human-like voice with improved Japanese support)
-async function generateGeminiVoice(text: string, config: VoiceConfig, userId: string) {
+async function generateGeminiVoice(text: string, config: VoiceConfig) {
     if (!process.env.GEMINI_API_KEY) {
         return NextResponse.json({ error: "Gemini API Key is missing" }, { status: 500 });
     }
@@ -313,7 +322,7 @@ ${text}`;
                         const pcmBuffer = Buffer.from(audioData, "base64");
                         const wavBuffer = pcmToWav(pcmBuffer, sampleRate);
                         const wavBase64 = wavBuffer.toString("base64");
-                        const audioUrl = await uploadAndReturnUrl(wavBase64, userId, "wav");
+                        const audioUrl = await saveAudioLocally(wavBase64, "wav");
 
                         return NextResponse.json({
                             success: true,
@@ -326,7 +335,7 @@ ${text}`;
 
                     // Other formats (mp3, wav, etc.) - use as-is
                     const format = mimeType.split("/")[1]?.split(";")[0] || "wav";
-                    const audioUrl = await uploadAndReturnUrl(audioData, userId, format);
+                    const audioUrl = await saveAudioLocally(audioData, format);
 
                     return NextResponse.json({
                         success: true,

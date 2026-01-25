@@ -19,7 +19,7 @@ import {
 } from "@/lib/supabase";
 import { getUserTotalCosts, formatCostJPY, formatCostUSD, saveCost } from "@/lib/cost-tracker";
 import { applyPronunciationDictionary } from "@/lib/pronunciation";
-import { checkLipSyncAvailability, generateLipSyncVideo, getDefaultAvatarImage } from "@/lib/lipsync";
+import { generateLipSyncVideo, getDefaultAvatarImage } from "@/lib/lipsync";
 import AvatarManager, { Avatar } from "@/components/AvatarManager";
 import LipSyncTester from "@/components/LipSyncTester";
 import ThemeHistorySlider from "@/components/ThemeHistorySlider";
@@ -170,6 +170,18 @@ const GEMINI_TTS_MODELS = [
     { id: "gemini-2.5-flash-lite-preview-tts", name: "Flash Lite", description: "最速・軽量" },
 ];
 
+// Voice Style Presets (演技指導)
+const VOICE_STYLE_PRESETS = [
+    { id: "neutral", name: "ニュートラル", emoji: "😐", style: "" },
+    { id: "cheerful", name: "明るく元気", emoji: "😊", style: "明るく元気に、ハキハキと話す" },
+    { id: "calm", name: "落ち着いて", emoji: "😌", style: "落ち着いて穏やかに、ゆっくりと丁寧に" },
+    { id: "serious", name: "真剣に", emoji: "😤", style: "真剣に力を込めて、強調するように" },
+    { id: "excited", name: "ワクワク", emoji: "🤩", style: "ワクワクした気持ちで、テンション高めに" },
+    { id: "whisper", name: "ささやき", emoji: "🤫", style: "囁くように小声で、優しく語りかける" },
+    { id: "news", name: "ニュース風", emoji: "📺", style: "ニュースキャスターのように、はっきりと明瞭に" },
+    { id: "teacher", name: "先生風", emoji: "👨‍🏫", style: "先生が教えるように、わかりやすく丁寧に説明" },
+];
+
 // 後方互換性のための旧AVATAR_CHARACTERS（生成時に使用）
 const ELEVENLABS_VOICES = {
     female1: "EXAVITQu4vr4xnSDxMaL",
@@ -239,6 +251,7 @@ export default function Home() {
     const [ttsProvider, setTtsProvider] = useState<TTSProvider>("google");
     const [selectedVoiceId, setSelectedVoiceId] = useState<string>(GOOGLE_VOICE_OPTIONS[0].id); // 選択中のボイスID
     const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>("gemini-2.5-flash-preview-tts"); // Gemini TTSモデル
+    const [selectedVoiceStyle, setSelectedVoiceStyle] = useState<string>("neutral"); // 演技スタイル
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
     const [imageModel, setImageModel] = useState<"flash" | "pro">("flash"); // flash=高速3Flash, pro=高品質3Pro
     const [openingEnabled, setOpeningEnabled] = useState(true);
@@ -314,12 +327,14 @@ export default function Home() {
 
             console.log("[Voice Preview] Provider:", ttsProvider, "VoiceId:", selectedVoiceId);
 
+            const stylePreset = VOICE_STYLE_PRESETS.find(s => s.id === selectedVoiceStyle);
             const res = await axios.post("/api/generate-voice", {
                 text: sampleText,
                 config: {
                     provider: ttsProvider,
                     voice: selectedVoiceId,
                     model: ttsProvider === "gemini" ? selectedGeminiModel : undefined,
+                    style: stylePreset?.style || "",
                 },
             });
 
@@ -334,7 +349,7 @@ export default function Home() {
             console.error("Voice preview failed:", error);
             setIsPreviewingVoice(false);
         }
-    }, [selectedVoiceId, ttsProvider, selectedGeminiModel, isPreviewingVoice, previewAudio]);
+    }, [selectedVoiceId, ttsProvider, selectedGeminiModel, selectedVoiceStyle, isPreviewingVoice, previewAudio]);
 
     // Track active users (heartbeat every 30 seconds)
     useEffect(() => {
@@ -367,17 +382,17 @@ export default function Home() {
         }
     }, [user, authLoading, router]);
 
-    // Check lip sync service availability
-    useEffect(() => {
-        const checkAvailability = async () => {
-            const available = await checkLipSyncAvailability();
-            setLipSyncAvailable(available);
-            if (!available) {
-                console.warn("Lip sync service not available");
-            }
-        };
-        checkAvailability();
-    }, []);
+    // Lip sync service check disabled - not currently needed
+    // useEffect(() => {
+    //     const checkAvailability = async () => {
+    //         const available = await checkLipSyncAvailability();
+    //         setLipSyncAvailable(available);
+    //         if (!available) {
+    //             console.warn("Lip sync service not available");
+    //         }
+    //     };
+    //     checkAvailability();
+    // }, []);
 
     // Restore theme text from localStorage on mount
     useEffect(() => {
@@ -1527,6 +1542,30 @@ export default function Home() {
                                                         title={model.description}
                                                     >
                                                         <span className="font-medium">{model.name}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Voice Style Selection (演技指導) - Gemini only */}
+                                    {ttsProvider === "gemini" && (
+                                        <div>
+                                            <label className="text-[10px] text-slate-400 mb-1 block">🎭 演技スタイル</label>
+                                            <div className="grid grid-cols-4 gap-1">
+                                                {VOICE_STYLE_PRESETS.map((preset) => (
+                                                    <button
+                                                        key={preset.id}
+                                                        onClick={() => setSelectedVoiceStyle(preset.id)}
+                                                        className={`py-1.5 px-1 rounded text-[10px] transition-colors text-center ${
+                                                            selectedVoiceStyle === preset.id
+                                                                ? "bg-amber-500/80 text-white"
+                                                                : "bg-white/5 text-slate-300 hover:bg-white/10"
+                                                        }`}
+                                                        title={preset.style || "デフォルト"}
+                                                    >
+                                                        <span className="block text-sm">{preset.emoji}</span>
+                                                        <span className="block text-[8px] truncate">{preset.name}</span>
                                                     </button>
                                                 ))}
                                             </div>
