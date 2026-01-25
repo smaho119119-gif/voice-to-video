@@ -196,15 +196,23 @@ export async function POST(req: NextRequest) {
         // Generate audio for each scene sequentially to build accurate timesheet
         for (let i = 0; i < scenes.length; i++) {
             const scene = scenes[i];
-            console.log(`[Batch Audio] Generating scene ${i + 1}/${scenes.length}: "${scene.text.slice(0, 30)}..."`);
+            console.log(`[Batch Audio] Generating scene ${i + 1}/${scenes.length} [speaker: ${scene.speaker || "default"}]: "${scene.text.slice(0, 30)}..."`);
 
             // Apply reading dictionary
             const processedText = applyReadingDictionary(scene.text, customDictionary);
 
             // Determine which voice to use based on speaker type
-            const voice = scene.speaker === "guest" || scene.speaker === "customer"
+            // speaker2 = 対話モードの二人目 (guest/視聴者代表)
+            // guest/customer = 従来の話者タイプ
+            const isSecondaryVoice =
+                scene.speaker === "speaker2" ||
+                scene.speaker === "guest" ||
+                scene.speaker === "customer";
+            const voice = isSecondaryVoice
                 ? voiceConfig.secondaryVoice || voiceConfig.voice
                 : voiceConfig.voice;
+
+            console.log(`[Batch Audio]   -> Voice: ${voice} (secondary: ${isSecondaryVoice})`);
 
             const model = voiceConfig.model || "gemini-2.5-flash-preview-tts";
 
