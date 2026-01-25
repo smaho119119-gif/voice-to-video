@@ -5,6 +5,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { uploadAudioToStorage } from "@/lib/supabase";
 
 const execAsync = promisify(exec);
 
@@ -35,7 +36,8 @@ async function getAudioDuration(filePath: string): Promise<number> {
 }
 
 // Helper to save audio locally and return URL + duration (fast local storage)
-async function saveAudioLocally(base64Audio: string, format: string = "mp3"): Promise<{ url: string; duration: number }> {
+// Also uploads to Supabase for persistence
+async function saveAudioLocally(base64Audio: string, format: string = "mp3", userId: string = "anonymous"): Promise<{ url: string; duration: number }> {
     try {
         const audioDir = path.join(process.cwd(), "public", "audio-cache");
         await mkdir(audioDir, { recursive: true });
@@ -49,7 +51,13 @@ async function saveAudioLocally(base64Audio: string, format: string = "mp3"): Pr
         // Get audio duration using ffprobe
         const duration = await getAudioDuration(filePath);
 
-        return { url: `/audio-cache/${fileName}`, duration };
+        // Try to upload to Supabase for persistence (non-blocking)
+        const supabaseUrl = await uploadAudioToStorage(base64Audio, userId, format);
+
+        // Return Supabase URL if available, otherwise local URL
+        const finalUrl = supabaseUrl || `/audio-cache/${fileName}`;
+
+        return { url: finalUrl, duration };
     } catch (error) {
         console.error("Failed to save audio locally:", error);
         // Fallback to base64 if local save fails

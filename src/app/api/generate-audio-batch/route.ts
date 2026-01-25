@@ -5,6 +5,7 @@ import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { applyReadingDictionary } from "@/lib/reading-dictionary";
+import { uploadAudioToStorage } from "@/lib/supabase";
 
 const execAsync = promisify(exec);
 
@@ -53,7 +54,8 @@ async function getAudioDuration(filePath: string): Promise<number> {
 }
 
 // Save audio locally and return URL + duration
-async function saveAudioLocally(base64Audio: string, format: string = "mp3"): Promise<{ url: string; duration: number; filePath: string }> {
+// Also uploads to Supabase for persistence
+async function saveAudioLocally(base64Audio: string, format: string = "mp3", userId: string = "batch"): Promise<{ url: string; duration: number; filePath: string }> {
     const audioDir = path.join(process.cwd(), "public", "audio-cache");
     await mkdir(audioDir, { recursive: true });
 
@@ -65,7 +67,11 @@ async function saveAudioLocally(base64Audio: string, format: string = "mp3"): Pr
 
     const duration = await getAudioDuration(filePath);
 
-    return { url: `/audio-cache/${fileName}`, duration, filePath };
+    // Try to upload to Supabase for persistence
+    const supabaseUrl = await uploadAudioToStorage(base64Audio, userId, format);
+    const finalUrl = supabaseUrl || `/audio-cache/${fileName}`;
+
+    return { url: finalUrl, duration, filePath };
 }
 
 // Convert PCM to WAV format
