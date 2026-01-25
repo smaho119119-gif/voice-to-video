@@ -11,6 +11,7 @@ interface VoiceConfig {
     voice?: string;
     speed?: number;
     pitch?: number;
+    style?: string; // 演技指導: "疲れた声で、ゆっくりと" など
 }
 
 // Helper to upload audio and return URL
@@ -34,15 +35,10 @@ const OPENAI_VOICES = {
     shimmer: "Shimmer - 柔らかい女性声"
 };
 
-// Google Cloud TTS Japanese voices
+// Google Cloud TTS Japanese voices（実動作確認済み: A=女性, D=男性）
 const GOOGLE_VOICES = {
-    "ja-JP-Neural2-B": "Neural2-B - 男性（高品質）",
-    "ja-JP-Neural2-C": "Neural2-C - 女性（高品質）",
-    "ja-JP-Neural2-D": "Neural2-D - 男性（高品質）",
-    "ja-JP-Wavenet-A": "Wavenet-A - 女性",
-    "ja-JP-Wavenet-B": "Wavenet-B - 女性",
-    "ja-JP-Wavenet-C": "Wavenet-C - 男性",
-    "ja-JP-Wavenet-D": "Wavenet-D - 男性"
+    "ja-JP-Wavenet-A": "Wavenet-A - 女性（推奨）",
+    "ja-JP-Wavenet-D": "Wavenet-D - 男性（推奨）"
 };
 
 // ElevenLabs voices (example IDs - would need actual IDs)
@@ -122,10 +118,12 @@ async function generateGoogleVoice(text: string, config: VoiceConfig, userId: st
         return NextResponse.json({ error: "Google TTS API Key is missing" }, { status: 500 });
     }
 
-    const voice = config?.voice || "ja-JP-Neural2-C";
+    const voice = config?.voice || "ja-JP-Wavenet-A";
     console.log("[Google TTS] Using voice:", voice);
-    const speed = config?.speed || 1.0;
-    const pitch = config?.pitch || 0;
+    // 指示書準拠: speakingRate=0.95, pitch=-1.0(女性)/-2.0(男性)
+    const speed = config?.speed || 0.95;
+    const isWavenetD = voice === "ja-JP-Wavenet-D";
+    const pitch = config?.pitch ?? (isWavenetD ? -2.0 : -1.0);
 
     const response = await fetch(
         `https://texttospeech.googleapis.com/v1/text:synthesize?key=${process.env.GOOGLE_TTS_API_KEY}`,
@@ -211,20 +209,21 @@ async function generateElevenLabsVoice(text: string, config: VoiceConfig, userId
     });
 }
 
-// Gemini 2.0 TTS (natural, human-like voice similar to Gemini Live)
+// Gemini 2.5 TTS Preview (natural, human-like voice with improved Japanese support)
 async function generateGeminiVoice(text: string, config: VoiceConfig, userId: string) {
     if (!process.env.GEMINI_API_KEY) {
         return NextResponse.json({ error: "Gemini API Key is missing" }, { status: 500 });
     }
 
-    const voiceName = config?.voice || "Aoede";
-    console.log("[Gemini TTS] Using voice:", voiceName);
+    const voiceName = config?.voice || "Zephyr";
+    const voiceStyle = config?.style || "";
+    console.log("[Gemini 2.5 TTS] Using voice:", voiceName, "Style:", voiceStyle || "(default)");
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-    // Use Gemini 2.0 Flash with audio output
+    // Use Gemini 2.5 Flash Preview TTS model
     const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-2.5-flash-preview-tts",
         generationConfig: {
             responseModalities: ["audio"],
             speechConfig: {
@@ -237,11 +236,26 @@ async function generateGeminiVoice(text: string, config: VoiceConfig, userId: st
         } as any
     });
 
+    // Build prompt with acting direction
+    let prompt: string;
+    if (voiceStyle) {
+        prompt = `【演技指導】
+${voiceStyle}
+
+【重要】上記の演技指導に従って、以下のセリフを読み上げてください。
+セリフ以外のコメントや説明は一切不要です。セリフのみを音声にしてください。
+
+【セリフ】
+${text}`;
+    } else {
+        prompt = `以下の日本語テキストを自然に、感情を込めて読み上げてください。コメントは不要です:\n\n${text}`;
+    }
+
     try {
         const result = await model.generateContent({
             contents: [{
                 role: "user",
-                parts: [{ text: `Please read the following Japanese text naturally with emotion and proper intonation. Do not add any commentary, just read the text:\n\n${text}` }]
+                parts: [{ text: prompt }]
             }]
         });
 
@@ -300,14 +314,17 @@ export async function GET() {
                 available: !!process.env.ELEVENLABS_API_KEY
             },
             gemini: {
-                name: "Gemini Live",
-                description: "Google Gemini 2.0の自然な音声。息遣いや感情表現が人間らしい。",
+                name: "Gemini 2.5 TTS Preview",
+                description: "Google Gemini 2.5の最新TTS。自然で表現力豊かな日本語音声。",
                 voices: {
-                    "Aoede": "Aoede - 自然な女性声",
+                    "Zephyr": "Zephyr - 明るい女性声",
+                    "Puck": "Puck - 活発な男性声",
                     "Charon": "Charon - 落ち着いた男性声",
+                    "Kore": "Kore - 柔らかい女性声",
                     "Fenrir": "Fenrir - 力強い男性声",
-                    "Kore": "Kore - 若い女性声",
-                    "Puck": "Puck - 明るい男性声"
+                    "Leda": "Leda - 温かみのある女性声",
+                    "Orus": "Orus - 知的な男性声",
+                    "Aoede": "Aoede - 自然な女性声"
                 },
                 requiresKey: "GEMINI_API_KEY",
                 available: !!process.env.GEMINI_API_KEY

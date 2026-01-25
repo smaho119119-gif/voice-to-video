@@ -49,3 +49,16 @@
 ### 6) 変更の粒度
 - 1PR/1変更で目的を明確にする。
 - 大規模変更は段階的に（破壊的変更を避ける）。
+
+### 7) 開発サーバーのポート
+- **開発サーバーは必ずポート `4000` を使用する**
+- 他のプロジェクトとポートが競合するため、デフォルトの3000は使わない
+- `package.json` の `scripts` で `-p 4000` を指定済み
+- `npm run dev` → http://localhost:4000 で起動する
+
+### 8) Supabaseテーブル命名規則
+- **新規テーブルには必ずプレフィクス `vg_` を付ける**（video generator の略）
+- 例: `vg_projects`, `vg_theme_history`, `vg_settings`
+- 他のアプリのテーブルと区別するため、必ず統一する
+- RLSポリシー名にもプレフィクスを含める（例: `"Users can view their own vg_projects"`）
+- 関数/トリガー名にもプレフィクスを含める（例: `vg_set_current_project()`）
