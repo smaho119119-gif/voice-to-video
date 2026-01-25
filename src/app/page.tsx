@@ -334,7 +334,7 @@ export default function Home() {
             console.error("Voice preview failed:", error);
             setIsPreviewingVoice(false);
         }
-    }, [selectedVoiceId, ttsProvider, isPreviewingVoice, previewAudio]);
+    }, [selectedVoiceId, ttsProvider, selectedGeminiModel, isPreviewingVoice, previewAudio]);
 
     // Track active users (heartbeat every 30 seconds)
     useEffect(() => {
