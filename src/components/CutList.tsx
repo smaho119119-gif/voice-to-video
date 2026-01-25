@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   CutConfig,
   ImageEffect,
@@ -9,12 +9,34 @@ import {
   MainTextType,
   MainTextConfig,
   SceneImage,
+  SpeakerType,
+  SceneAsset,
+  AssetType,
+  AssetAnimation,
+  ShapeType,
   IMAGE_EFFECT_OPTIONS,
   TRANSITION_OPTIONS,
   TEXT_ANIMATION_OPTIONS,
+  GEMINI_VOICE_OPTIONS,
+  ASSET_ANIMATION_OPTIONS,
+  SHAPE_OPTIONS,
+  ICON_PRESETS,
+  LOTTIE_PRESETS,
+  createDefaultAsset,
   formatTime,
 } from "@/lib/video-presets";
-import { Image, Type, Mic, FileText, Plus, Trash2, FolderOpen, ChevronDown, ChevronRight } from "lucide-react";
+
+// 話者オプション
+const SPEAKER_OPTIONS: { value: SpeakerType; label: string; icon: string; color: string }[] = [
+  { value: "narrator", label: "ナレーター", icon: "🎙️", color: "text-green-400" },
+  { value: "host", label: "ホスト", icon: "👤", color: "text-blue-400" },
+  { value: "guest", label: "ゲスト", icon: "👥", color: "text-orange-400" },
+  { value: "customer", label: "お客様", icon: "💬", color: "text-yellow-400" },
+  { value: "expert", label: "専門家", icon: "🎓", color: "text-purple-400" },
+  { value: "interviewer", label: "質問者", icon: "🎤", color: "text-cyan-400" },
+  { value: "interviewee", label: "回答者", icon: "💭", color: "text-pink-400" },
+];
+import { Image, Type, Mic, FileText, Plus, Trash2, FolderOpen, ChevronDown, ChevronRight, Play, Pause, Eye, X, RefreshCw, BookOpen, Square, Circle, Star, ArrowRight, Sparkles, Shapes, Loader2, Wand2 } from "lucide-react";
 import { ImageGalleryModal } from "./ImageGalleryModal";
 
 interface CutListProps {
@@ -23,6 +45,11 @@ interface CutListProps {
   onUpdateAllCuts: (updates: Partial<CutConfig>) => void;
   currentTime?: number;
   onSeekToCut?: (startTime: number) => void;
+  onRegenerateAudio?: (cutId: number) => void;
+  onOpenDictionary?: (initialText?: string) => void;
+  regeneratingCutId?: number | null;
+  onGenerateImage?: (cutId: number) => void;
+  generatingImageCutId?: number | null;
 }
 
 export function CutList({
@@ -31,6 +58,11 @@ export function CutList({
   onUpdateAllCuts,
   currentTime = 0,
   onSeekToCut,
+  onRegenerateAudio,
+  onOpenDictionary,
+  regeneratingCutId,
+  onGenerateImage,
+  generatingImageCutId,
 }: CutListProps) {
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [expandedCuts, setExpandedCuts] = useState<Set<number>>(new Set());
@@ -122,6 +154,11 @@ export function CutList({
             onToggleExpand={() => toggleExpand(cut.id)}
             onUpdate={(updates) => onUpdateCut(cut.id, updates)}
             onSeek={() => onSeekToCut?.(cut.startTime)}
+            onRegenerateAudio={() => onRegenerateAudio?.(cut.id)}
+            onOpenDictionary={onOpenDictionary}
+            isRegenerating={regeneratingCutId === cut.id}
+            onGenerateImage={() => onGenerateImage?.(cut.id)}
+            isGeneratingImage={generatingImageCutId === cut.id}
           />
         ))}
       </div>
@@ -137,6 +174,11 @@ interface CutItemProps {
   onToggleExpand: () => void;
   onUpdate: (updates: Partial<CutConfig>) => void;
   onSeek: () => void;
+  onRegenerateAudio?: () => void;
+  onOpenDictionary?: (initialText?: string) => void;
+  isRegenerating?: boolean;
+  onGenerateImage?: () => void;
+  isGeneratingImage?: boolean;
 }
 
 // メインテキストタイプのオプション
@@ -147,8 +189,65 @@ const MAIN_TEXT_TYPE_OPTIONS: { value: MainTextType; label: string; icon: string
   { value: "highlight", label: "強調", icon: "⭐" },
 ];
 
-function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek }: CutItemProps) {
+function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek, onRegenerateAudio, onOpenDictionary, isRegenerating, onGenerateImage, isGeneratingImage }: CutItemProps) {
   const [showGallery, setShowGallery] = useState(false);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [showImagePreview, setShowImagePreview] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Audio playback
+  const handlePlayAudio = () => {
+    if (!cut.voiceUrl) return;
+
+    // If audio ref exists and is playing the same URL, toggle play/pause
+    if (audioRef.current && audioRef.current.src.endsWith(cut.voiceUrl.split('/').pop() || '')) {
+      if (isAudioPlaying) {
+        audioRef.current.pause();
+        setIsAudioPlaying(false);
+      } else {
+        audioRef.current.play().catch(e => {
+          console.error('[Audio] Playback failed:', e);
+          setIsAudioPlaying(false);
+        });
+        setIsAudioPlaying(true);
+      }
+    } else {
+      // Stop any existing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      // Create new audio element
+      const audio = new Audio(cut.voiceUrl);
+      audioRef.current = audio;
+      audio.onended = () => setIsAudioPlaying(false);
+      audio.onerror = (e) => {
+        console.error('[Audio] Error loading audio:', e);
+        setIsAudioPlaying(false);
+      };
+      audio.play().catch(e => {
+        console.error('[Audio] Playback failed:', e);
+        setIsAudioPlaying(false);
+      });
+      setIsAudioPlaying(true);
+    }
+  };
+
+  // Reset audio when voiceUrl changes or component unmounts
+  useEffect(() => {
+    // Reset when voiceUrl changes
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+      setIsAudioPlaying(false);
+    }
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, [cut.voiceUrl]);
 
   // メインテキストの行を更新
   const handleMainTextLinesChange = (lines: string[]) => {
@@ -216,6 +315,30 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek 
     });
   };
 
+  // アセットを追加
+  const handleAddAsset = (assetType: AssetType) => {
+    const newAsset = createDefaultAsset(assetType);
+    onUpdate({
+      assets: [...(cut.assets || []), newAsset],
+    });
+  };
+
+  // アセットを削除
+  const handleRemoveAsset = (assetId: string) => {
+    onUpdate({
+      assets: (cut.assets || []).filter((a) => a.id !== assetId),
+    });
+  };
+
+  // アセットを更新
+  const handleUpdateAsset = (assetId: string, updates: Partial<SceneAsset>) => {
+    onUpdate({
+      assets: (cut.assets || []).map((a) =>
+        a.id === assetId ? { ...a, ...updates } : a
+      ) as SceneAsset[],
+    });
+  };
+
   const hasContent = cut.mainText?.lines?.length || cut.subtitle || cut.voiceText || cut.images?.length;
 
   return (
@@ -228,6 +351,29 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek 
     >
       {/* ヘッダー行 - 常にクリック可能 */}
       <div className="flex items-center gap-2 p-2">
+        {/* 音声再生ボタン（一番左） */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handlePlayAudio();
+          }}
+          disabled={!cut.voiceUrl}
+          className={`p-1.5 rounded transition-colors ${
+            cut.voiceUrl
+              ? isAudioPlaying
+                ? "bg-green-500 text-white"
+                : "bg-green-600/30 text-green-400 hover:bg-green-600/50"
+              : "bg-gray-700/30 text-gray-600 cursor-not-allowed"
+          }`}
+          title={cut.voiceUrl ? (isAudioPlaying ? "停止" : "再生") : "音声未生成"}
+        >
+          {isAudioPlaying ? (
+            <Pause className="w-4 h-4" />
+          ) : (
+            <Play className="w-4 h-4" />
+          )}
+        </button>
+
         {/* 展開/閉じるボタン */}
         <button
           onClick={onToggleExpand}
@@ -299,12 +445,56 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek 
           ))}
         </div>
 
-        {/* コンテンツ有無インジケーター */}
-        <div className="flex items-center gap-1 text-xs">
-          <span className={cut.mainText?.lines?.length ? "text-green-400" : "text-gray-600"}>T</span>
-          <span className={cut.subtitle ? "text-blue-400" : "text-gray-600"}>S</span>
-          <span className={cut.voiceText ? "text-purple-400" : "text-gray-600"}>V</span>
-          <span className={cut.images?.length ? "text-yellow-400" : "text-gray-600"}>I</span>
+        {/* コンテンツ有無 & 生成状況インジケーター */}
+        <div className="flex items-center gap-1.5 text-xs">
+          {/* 話者インジケーター（narrator以外の時のみ表示） */}
+          {cut.speaker && cut.speaker !== "narrator" && (
+            <span
+              className={`px-1 py-0.5 rounded ${
+                SPEAKER_OPTIONS.find(o => o.value === cut.speaker)?.color || "text-gray-400"
+              } bg-gray-700/50`}
+              title={SPEAKER_OPTIONS.find(o => o.value === cut.speaker)?.label}
+            >
+              {SPEAKER_OPTIONS.find(o => o.value === cut.speaker)?.icon}
+            </span>
+          )}
+          {/* ボイスインジケーター（Zephyr以外の時のみ表示） */}
+          {cut.voiceId && cut.voiceId !== "Zephyr" && (
+            <span
+              className={`px-1 py-0.5 rounded text-[10px] font-medium ${
+                GEMINI_VOICE_OPTIONS.find(v => v.value === cut.voiceId)?.color || "text-gray-400"
+              } bg-gray-700/50`}
+              title={GEMINI_VOICE_OPTIONS.find(v => v.value === cut.voiceId)?.label}
+            >
+              {cut.voiceId.slice(0, 2)}
+            </span>
+          )}
+          {/* 画像: プロンプトあり/生成済み */}
+          <span
+            className={`flex items-center gap-0.5 px-1 py-0.5 rounded ${
+              cut.imageUrl
+                ? "bg-orange-500/20 text-orange-400"
+                : (cut.imagePrompt || cut.images?.[0]?.prompt)
+                  ? "bg-gray-700/50 text-gray-400"
+                  : "text-gray-600"
+            }`}
+            title={cut.imageUrl ? "画像生成済み" : (cut.imagePrompt ? "プロンプトあり" : "画像なし")}
+          >
+            🖼️{cut.imageUrl && "✓"}
+          </span>
+          {/* 音声: テキストあり/生成済み */}
+          <span
+            className={`flex items-center gap-0.5 px-1 py-0.5 rounded ${
+              cut.voiceUrl
+                ? "bg-green-500/20 text-green-400"
+                : cut.voiceText
+                  ? "bg-gray-700/50 text-gray-400"
+                  : "text-gray-600"
+            }`}
+            title={cut.voiceUrl ? "音声生成済み" : (cut.voiceText ? "テキストあり" : "音声なし")}
+          >
+            🔊{cut.voiceUrl && "✓"}
+          </span>
         </div>
       </div>
 
@@ -366,7 +556,56 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek 
                 <div className="flex items-center gap-2 mb-1">
                   <Mic className="w-3 h-3 text-purple-400" />
                   <span className="text-xs text-purple-400">音声テキスト</span>
-                  {cut.voiceUrl && <span className="text-xs text-green-400 ml-auto">✓ 生成済み</span>}
+                  <div className="flex items-center gap-1 ml-auto">
+                    {/* 辞書登録ボタン */}
+                    <button
+                      onClick={() => onOpenDictionary?.(cut.voiceText || "")}
+                      className="flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600/30 transition-colors"
+                      title="読み辞書に登録"
+                    >
+                      <BookOpen className="w-3 h-3" />
+                      辞書
+                    </button>
+                    {/* 音声再生成ボタン */}
+                    <button
+                      onClick={() => onRegenerateAudio?.()}
+                      disabled={!cut.voiceText || isRegenerating}
+                      className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors ${
+                        isRegenerating
+                          ? "bg-purple-600 text-white cursor-wait"
+                          : "bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                      }`}
+                      title={isRegenerating ? "再生成中..." : "このカットの音声を再生成"}
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isRegenerating ? "animate-spin" : ""}`} />
+                      {isRegenerating ? "再生成中..." : "再生成"}
+                    </button>
+                    {cut.voiceUrl && (
+                      <>
+                        <button
+                          onClick={handlePlayAudio}
+                          className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors ${
+                            isAudioPlaying
+                              ? "bg-green-500 text-white"
+                              : "bg-green-600/20 text-green-400 hover:bg-green-600/30"
+                          }`}
+                        >
+                          {isAudioPlaying ? (
+                            <>
+                              <Pause className="w-3 h-3" />
+                              停止
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3 h-3" />
+                              再生
+                            </>
+                          )}
+                        </button>
+                        <span className="text-xs text-green-400">✓</span>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <textarea
                   value={cut.voiceText || ""}
@@ -375,6 +614,68 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek 
                   rows={2}
                   className="w-full px-2 py-1.5 text-sm bg-gray-900 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
                 />
+                {/* 話者選択 */}
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] text-gray-500">話者:</span>
+                  {SPEAKER_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => onUpdate({ speaker: opt.value })}
+                      className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                        (cut.speaker || "narrator") === opt.value
+                          ? `bg-gray-700 ${opt.color} ring-1 ring-current`
+                          : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
+                      }`}
+                      title={opt.label}
+                    >
+                      {opt.icon}
+                    </button>
+                  ))}
+                  <span className={`text-[10px] ${SPEAKER_OPTIONS.find(o => o.value === (cut.speaker || "narrator"))?.color || "text-gray-400"}`}>
+                    {SPEAKER_OPTIONS.find(o => o.value === (cut.speaker || "narrator"))?.label}
+                  </span>
+                </div>
+                {/* ボイス選択（8種類） */}
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] text-gray-500">声:</span>
+                  <div className="flex gap-1">
+                    <span className="text-[9px] text-pink-400/50">♀</span>
+                    {GEMINI_VOICE_OPTIONS.filter(v => v.gender === "female").map((voice) => (
+                      <button
+                        key={voice.value}
+                        onClick={() => onUpdate({ voiceId: voice.value })}
+                        className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                          (cut.voiceId || "Zephyr") === voice.value
+                            ? `bg-gray-700 ${voice.color} ring-1 ring-current`
+                            : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
+                        }`}
+                        title={voice.label}
+                      >
+                        {voice.value.slice(0, 2)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-1">
+                    <span className="text-[9px] text-blue-400/50">♂</span>
+                    {GEMINI_VOICE_OPTIONS.filter(v => v.gender === "male").map((voice) => (
+                      <button
+                        key={voice.value}
+                        onClick={() => onUpdate({ voiceId: voice.value })}
+                        className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                          (cut.voiceId || "Zephyr") === voice.value
+                            ? `bg-gray-700 ${voice.color} ring-1 ring-current`
+                            : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
+                        }`}
+                        title={voice.label}
+                      >
+                        {voice.value.slice(0, 2)}
+                      </button>
+                    ))}
+                  </div>
+                  <span className={`text-[10px] ${GEMINI_VOICE_OPTIONS.find(v => v.value === (cut.voiceId || "Zephyr"))?.color || "text-gray-400"}`}>
+                    {GEMINI_VOICE_OPTIONS.find(v => v.value === (cut.voiceId || "Zephyr"))?.label}
+                  </span>
+                </div>
               </div>
 
               {/* 演技指導 (Voice Style) */}
@@ -399,6 +700,15 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek 
               <div className="flex items-center gap-2 mb-1">
                 <Image className="w-3 h-3 text-yellow-400" />
                 <span className="text-xs text-yellow-400">画像</span>
+                {cut.imageUrl && (
+                  <button
+                    onClick={() => setShowImagePreview(true)}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs bg-orange-600/20 text-orange-400 rounded hover:bg-orange-600/30"
+                  >
+                    <Eye className="w-3 h-3" />
+                    プレビュー
+                  </button>
+                )}
                 <div className="flex gap-1 ml-auto">
                   <button
                     onClick={() => handleAddImage("generated")}
@@ -415,40 +725,183 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek 
                 </div>
               </div>
 
-              {/* 画像リスト */}
-              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                {(cut.images || []).length === 0 ? (
-                  <div className="text-xs text-gray-500 text-center py-4 bg-gray-900 rounded border border-dashed border-gray-700">
+              {/* 画像サムネイル一覧（生成済み画像を横並びで表示） */}
+              {(cut.imageUrl || (cut.images || []).some(img => img.url)) && (
+                <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+                  {/* メイン画像 (cut.imageUrl) */}
+                  {cut.imageUrl && (
+                    <div className="relative flex-shrink-0 group">
+                      <img
+                        src={cut.imageUrl}
+                        alt={`シーン ${cut.id} メイン`}
+                        className="w-20 h-14 object-cover rounded border border-orange-500/50 cursor-pointer hover:border-orange-400 transition-colors"
+                        onClick={() => setShowImagePreview(true)}
+                      />
+                      <div className="absolute top-0.5 left-0.5 bg-orange-500/90 text-white text-[8px] px-1 py-0.5 rounded">
+                        メイン
+                      </div>
+                    </div>
+                  )}
+                  {/* 追加画像 (cut.images[].url) */}
+                  {(cut.images || []).filter(img => img.url).map((img, idx) => (
+                    <div key={img.id} className="relative flex-shrink-0 group">
+                      <img
+                        src={img.url}
+                        alt={`シーン ${cut.id} 画像 ${idx + 1}`}
+                        className="w-20 h-14 object-cover rounded border border-blue-500/50 cursor-pointer hover:border-blue-400 transition-colors"
+                        onClick={() => window.open(img.url, '_blank')}
+                      />
+                      <div className="absolute top-0.5 left-0.5 bg-blue-500/90 text-white text-[8px] px-1 py-0.5 rounded">
+                        #{idx + 1}
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveImage(img.id);
+                        }}
+                        className="absolute top-0.5 right-0.5 p-0.5 bg-red-500/80 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 画像プロンプトリスト */}
+              <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                {(cut.images || []).length === 0 && !cut.imageUrl && !cut.imagePrompt ? (
+                  <div className="text-xs text-gray-500 text-center py-3 bg-gray-900 rounded border border-dashed border-gray-700">
                     画像がありません
                   </div>
                 ) : (
-                  (cut.images || []).map((img, idx) => (
-                    <div key={img.id} className="flex items-center gap-2 bg-gray-900 rounded p-1.5">
-                      <span className="text-xs text-gray-500">#{idx + 1}</span>
-                      {img.source === "generated" ? (
+                  <>
+                    {/* メイン画像プロンプト */}
+                    {(cut.imagePrompt || cut.imageUrl) && (
+                      <div className="flex items-center gap-2 bg-gray-900 rounded p-1.5">
+                        <span className="text-[10px] text-orange-400 font-medium flex-shrink-0">メイン</span>
                         <input
                           type="text"
-                          value={img.prompt || ""}
-                          onChange={(e) => handleImagePromptChange(img.id, e.target.value)}
-                          placeholder="プロンプト"
+                          value={cut.imagePrompt || ""}
+                          onChange={(e) => onUpdate({ imagePrompt: e.target.value })}
+                          placeholder="画像プロンプト"
                           className="flex-1 px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-white"
                         />
-                      ) : (
-                        <span className="flex-1 text-xs text-gray-400 truncate">
-                          {img.url?.split("/").pop() || "ギャラリー画像"}
-                        </span>
-                      )}
-                      <button
-                        onClick={() => handleRemoveImage(img.id)}
-                        className="p-0.5 text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))
+                        {/* 画像生成ボタン */}
+                        <button
+                          onClick={onGenerateImage}
+                          disabled={isGeneratingImage || !cut.imagePrompt?.trim()}
+                          className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-all ${
+                            isGeneratingImage
+                              ? "bg-orange-600/50 text-orange-300 cursor-wait"
+                              : cut.imagePrompt?.trim()
+                                ? "bg-orange-600 text-white hover:bg-orange-500"
+                                : "bg-gray-700 text-gray-500 cursor-not-allowed"
+                          }`}
+                          title={cut.imageUrl ? "画像を再生成" : "画像を生成"}
+                        >
+                          {isGeneratingImage ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              <span>生成中</span>
+                            </>
+                          ) : (
+                            <>
+                              <Wand2 className="w-3 h-3" />
+                              <span>{cut.imageUrl ? "再生成" : "生成"}</span>
+                            </>
+                          )}
+                        </button>
+                        {cut.imageUrl && <span className="text-[10px] text-green-400">✓</span>}
+                      </div>
+                    )}
+                    {/* 追加画像プロンプト */}
+                    {(cut.images || []).map((img, idx) => (
+                      <div key={img.id} className="flex items-center gap-2 bg-gray-900 rounded p-1.5">
+                        <span className="text-[10px] text-blue-400 font-medium flex-shrink-0">#{idx + 1}</span>
+                        {img.source === "generated" ? (
+                          <input
+                            type="text"
+                            value={img.prompt || ""}
+                            onChange={(e) => handleImagePromptChange(img.id, e.target.value)}
+                            placeholder="プロンプト"
+                            className="flex-1 px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-white"
+                          />
+                        ) : (
+                          <span className="flex-1 text-xs text-gray-400 truncate">
+                            {img.url?.split("/").pop() || "ギャラリー画像"}
+                          </span>
+                        )}
+                        {img.url && <span className="text-[10px] text-green-400">✓</span>}
+                        <button
+                          onClick={() => handleRemoveImage(img.id)}
+                          className="p-0.5 text-red-400 hover:text-red-300"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </>
                 )}
               </div>
             </div>
+          </div>
+
+          {/* アセットセクション（図形・アイコン・テキスト・Lottie・SVG） */}
+          <div className="border-t border-gray-700/50 pt-3 mt-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Shapes className="w-3 h-3 text-cyan-400" />
+              <span className="text-xs text-cyan-400">アセット（図形・アイコン・テキスト）</span>
+              <div className="flex gap-1 ml-auto">
+                <button
+                  onClick={() => handleAddAsset("shape")}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs bg-cyan-600/20 text-cyan-400 rounded hover:bg-cyan-600/30"
+                  title="図形を追加"
+                >
+                  <Square className="w-3 h-3" /> 図形
+                </button>
+                <button
+                  onClick={() => handleAddAsset("icon")}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs bg-purple-600/20 text-purple-400 rounded hover:bg-purple-600/30"
+                  title="アイコンを追加"
+                >
+                  <Star className="w-3 h-3" /> アイコン
+                </button>
+                <button
+                  onClick={() => handleAddAsset("text")}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs bg-yellow-600/20 text-yellow-400 rounded hover:bg-yellow-600/30"
+                  title="テキストを追加"
+                >
+                  <Type className="w-3 h-3" /> テキスト
+                </button>
+                <button
+                  onClick={() => handleAddAsset("lottie")}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs bg-pink-600/20 text-pink-400 rounded hover:bg-pink-600/30"
+                  title="Lottieを追加"
+                >
+                  <Sparkles className="w-3 h-3" /> Lottie
+                </button>
+              </div>
+            </div>
+
+            {/* アセット一覧 */}
+            {(cut.assets || []).length === 0 ? (
+              <div className="text-xs text-gray-500 text-center py-3 bg-gray-900 rounded border border-dashed border-gray-700">
+                アセットがありません（上のボタンで追加）
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {(cut.assets || []).map((asset, idx) => (
+                  <AssetItem
+                    key={asset.id}
+                    asset={asset}
+                    index={idx}
+                    onUpdate={(updates) => handleUpdateAsset(asset.id, updates)}
+                    onRemove={() => handleRemoveAsset(asset.id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -459,6 +912,31 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek 
         onClose={() => setShowGallery(false)}
         onSelect={handleSelectFromGallery}
       />
+
+      {/* 画像プレビューモーダル */}
+      {showImagePreview && cut.imageUrl && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowImagePreview(false)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setShowImagePreview(false)}
+              className="absolute -top-10 right-0 p-2 text-white hover:text-gray-300 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <img
+              src={cut.imageUrl}
+              alt={`シーン ${cut.id} の画像`}
+              className="max-w-full max-h-[85vh] object-contain rounded-lg"
+            />
+            <div className="mt-2 text-center text-sm text-gray-400">
+              シーン #{cut.id} | {cut.imagePrompt?.slice(0, 100)}...
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -581,6 +1059,171 @@ function BulkEditPanel({ onApply, onCancel }: BulkEditPanelProps) {
           キャンセル
         </button>
       </div>
+    </div>
+  );
+}
+
+// アセットアイテム
+interface AssetItemProps {
+  asset: SceneAsset;
+  index: number;
+  onUpdate: (updates: Partial<SceneAsset>) => void;
+  onRemove: () => void;
+}
+
+function AssetItem({ asset, index, onUpdate, onRemove }: AssetItemProps) {
+  const getAssetIcon = () => {
+    switch (asset.type) {
+      case "shape": return <Square className="w-3 h-3 text-cyan-400" />;
+      case "icon": return <Star className="w-3 h-3 text-purple-400" />;
+      case "text": return <Type className="w-3 h-3 text-yellow-400" />;
+      case "lottie": return <Sparkles className="w-3 h-3 text-pink-400" />;
+      case "svg": return <Circle className="w-3 h-3 text-green-400" />;
+    }
+  };
+
+  const getAssetLabel = () => {
+    switch (asset.type) {
+      case "shape": return `図形: ${(asset as any).shapeType || "rectangle"}`;
+      case "icon": return `アイコン: ${(asset as any).iconName || "star"}`;
+      case "text": return `テキスト: ${((asset as any).text || "").slice(0, 10)}...`;
+      case "lottie": return `Lottie: ${(asset as any).lottieId || "confetti"}`;
+      case "svg": return `SVG: ${(asset as any).svgId || "checkmark"}`;
+    }
+  };
+
+  const getTypeColor = () => {
+    switch (asset.type) {
+      case "shape": return "border-cyan-500/50 bg-cyan-500/10";
+      case "icon": return "border-purple-500/50 bg-purple-500/10";
+      case "text": return "border-yellow-500/50 bg-yellow-500/10";
+      case "lottie": return "border-pink-500/50 bg-pink-500/10";
+      case "svg": return "border-green-500/50 bg-green-500/10";
+    }
+  };
+
+  return (
+    <div className={`flex items-center gap-2 p-2 rounded border ${getTypeColor()}`}>
+      {/* アイコンとラベル */}
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        {getAssetIcon()}
+        <span className="text-xs text-gray-300 truncate">{getAssetLabel()}</span>
+      </div>
+
+      {/* アニメーション選択 */}
+      <select
+        value={asset.animation}
+        onChange={(e) => onUpdate({ animation: e.target.value as AssetAnimation })}
+        className="px-2 py-1 text-xs bg-gray-800 border border-gray-600 rounded text-white"
+      >
+        {ASSET_ANIMATION_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.icon} {opt.label}
+          </option>
+        ))}
+      </select>
+
+      {/* 位置入力（簡易） */}
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          value={asset.position.x}
+          onChange={(e) => onUpdate({ position: { ...asset.position, x: Number(e.target.value) } })}
+          className="w-12 px-1 py-0.5 text-xs bg-gray-800 border border-gray-600 rounded text-white text-center"
+          min={0}
+          max={100}
+          title="X位置 (%)"
+        />
+        <span className="text-gray-500 text-xs">x</span>
+        <input
+          type="number"
+          value={asset.position.y}
+          onChange={(e) => onUpdate({ position: { ...asset.position, y: Number(e.target.value) } })}
+          className="w-12 px-1 py-0.5 text-xs bg-gray-800 border border-gray-600 rounded text-white text-center"
+          min={0}
+          max={100}
+          title="Y位置 (%)"
+        />
+      </div>
+
+      {/* 個別設定（タイプ別） */}
+      {asset.type === "shape" && (
+        <select
+          value={(asset as any).shapeType || "rectangle"}
+          onChange={(e) => onUpdate({ shapeType: e.target.value } as any)}
+          className="px-2 py-1 text-xs bg-gray-800 border border-gray-600 rounded text-white"
+        >
+          {SHAPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.icon} {opt.label}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {asset.type === "icon" && (
+        <select
+          value={(asset as any).iconName || "star"}
+          onChange={(e) => onUpdate({ iconName: e.target.value } as any)}
+          className="px-2 py-1 text-xs bg-gray-800 border border-gray-600 rounded text-white"
+        >
+          {ICON_PRESETS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {asset.type === "text" && (
+        <input
+          type="text"
+          value={(asset as any).text || ""}
+          onChange={(e) => onUpdate({ text: e.target.value } as any)}
+          className="w-24 px-2 py-1 text-xs bg-gray-800 border border-gray-600 rounded text-white"
+          placeholder="テキスト"
+        />
+      )}
+
+      {asset.type === "lottie" && (
+        <select
+          value={(asset as any).lottieId || "confetti"}
+          onChange={(e) => onUpdate({ lottieId: e.target.value } as any)}
+          className="px-2 py-1 text-xs bg-gray-800 border border-gray-600 rounded text-white"
+        >
+          {LOTTIE_PRESETS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {/* 色設定 */}
+      {(asset.type === "shape" || asset.type === "icon" || asset.type === "text") && (
+        <input
+          type="color"
+          value={(asset as any).fillColor || (asset as any).color || "#3B82F6"}
+          onChange={(e) => {
+            if (asset.type === "shape") {
+              onUpdate({ fillColor: e.target.value } as any);
+            } else {
+              onUpdate({ color: e.target.value } as any);
+            }
+          }}
+          className="w-6 h-6 rounded cursor-pointer"
+          title="色"
+        />
+      )}
+
+      {/* 削除ボタン */}
+      <button
+        onClick={onRemove}
+        className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded transition-colors"
+        title="削除"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
     </div>
   );
 }
