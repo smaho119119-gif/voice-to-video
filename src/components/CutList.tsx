@@ -53,6 +53,9 @@ interface CutListProps {
   regeneratingCutId?: number | null;
   onGenerateImage?: (cutId: number) => void;
   generatingImageCutId?: number | null;
+  // バッチ音声生成用のボイス設定
+  mainVoiceId?: string;      // メイン話者のボイスID
+  secondaryVoiceId?: string; // セカンダリ話者のボイスID
 }
 
 export function CutList({
@@ -66,6 +69,8 @@ export function CutList({
   regeneratingCutId,
   onGenerateImage,
   generatingImageCutId,
+  mainVoiceId = "Zephyr",
+  secondaryVoiceId = "Puck",
 }: CutListProps) {
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [expandedCuts, setExpandedCuts] = useState<Set<number>>(new Set());
@@ -162,6 +167,8 @@ export function CutList({
             isRegenerating={regeneratingCutId === cut.id}
             onGenerateImage={() => onGenerateImage?.(cut.id)}
             isGeneratingImage={generatingImageCutId === cut.id}
+            mainVoiceId={mainVoiceId}
+            secondaryVoiceId={secondaryVoiceId}
           />
         ))}
       </div>
@@ -182,6 +189,8 @@ interface CutItemProps {
   isRegenerating?: boolean;
   onGenerateImage?: () => void;
   isGeneratingImage?: boolean;
+  mainVoiceId: string;
+  secondaryVoiceId: string;
 }
 
 // メインテキストタイプのオプション
@@ -192,7 +201,7 @@ const MAIN_TEXT_TYPE_OPTIONS: { value: MainTextType; label: string; icon: string
   { value: "highlight", label: "強調", icon: "⭐" },
 ];
 
-function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek, onRegenerateAudio, onOpenDictionary, isRegenerating, onGenerateImage, isGeneratingImage }: CutItemProps) {
+function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek, onRegenerateAudio, onOpenDictionary, isRegenerating, onGenerateImage, isGeneratingImage, mainVoiceId, secondaryVoiceId }: CutItemProps) {
   const [showGallery, setShowGallery] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
@@ -454,7 +463,11 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek,
           {(() => {
             const speaker = cut.speaker || "narrator";
             const speakerInfo = SPEAKER_OPTIONS.find(o => o.value === speaker);
-            const voiceInfo = GEMINI_VOICE_OPTIONS.find(v => v.value === (cut.voiceId || "Zephyr"));
+            // speakerに基づいて使用するボイスを決定（バッチ生成と同じロジック）
+            const isSecondaryVoice = ["speaker2", "guest", "customer"].includes(speaker);
+            // カット個別のvoiceIdがあればそれを優先、なければspeakerに基づいてメイン/セカンダリを使用
+            const effectiveVoiceId = cut.voiceId || (isSecondaryVoice ? secondaryVoiceId : mainVoiceId);
+            const voiceInfo = GEMINI_VOICE_OPTIONS.find(v => v.value === effectiveVoiceId);
             const isMale = voiceInfo?.gender === "male";
             const genderSymbol = isMale ? "♂" : "♀";
             const genderBg = isMale ? "bg-blue-500/30 border-blue-500/50" : "bg-pink-500/30 border-pink-500/50";
@@ -463,10 +476,10 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek,
             return (
               <span
                 className={`px-1.5 py-0.5 rounded border ${genderBg} ${genderText} flex items-center gap-1`}
-                title={`${speakerInfo?.label || speaker} / ${voiceInfo?.label || "不明"}`}
+                title={`${speakerInfo?.label || speaker} / ${voiceInfo?.label || effectiveVoiceId}`}
               >
                 <span className="text-sm">{genderSymbol}</span>
-                <span className="text-[10px] font-medium">{(cut.voiceId || "Ze").slice(0, 2)}</span>
+                <span className="text-[10px] font-medium">{effectiveVoiceId.slice(0, 2)}</span>
               </span>
             );
           })()}

@@ -2463,6 +2463,8 @@ export default function EditorPage() {
                 regeneratingCutId={regeneratingCutId}
                 onGenerateImage={handleGenerateSingleImage}
                 generatingImageCutId={generatingSingleImageCutId}
+                mainVoiceId={selectedVoiceId}
+                secondaryVoiceId={secondaryVoiceId}
               />
             )}
           </div>
