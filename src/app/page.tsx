@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { AudioRecorder } from "@/components/AudioRecorder";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,19 @@ import {
 } from "@/lib/supabase";
 import { getUserTotalCosts, formatCostJPY, formatCostUSD, saveCost } from "@/lib/cost-tracker";
 import { applyPronunciationDictionary } from "@/lib/pronunciation";
+import { checkLipSyncAvailability, generateLipSyncVideo, getDefaultAvatarImage } from "@/lib/lipsync";
+import AvatarManager, { Avatar } from "@/components/AvatarManager";
+import LipSyncTester from "@/components/LipSyncTester";
+import ThemeHistorySlider from "@/components/ThemeHistorySlider";
+import {
+    getCurrentProject, createProject, updateProject, saveScenesToProject,
+    getThemeHistory, addThemeToHistory, deleteThemeFromHistory, debouncedSave,
+    Project, ThemeHistoryItem, ProjectSettings
+} from "@/lib/project-storage";
+import {
+    loadSession, saveSession, autoSaveVideoConfig, clearSession,
+    hasResumableSession, getSessionSummary, SavedVideoConfig
+} from "@/lib/session-storage";
 import axios from "axios";
 import { Progress } from "@/components/ui/progress";
 import { Player } from "@remotion/player";
@@ -41,6 +55,7 @@ interface Scene {
     image_prompt: string;
     imageUrl?: string;
     audioUrl?: string;
+    lipSyncVideoUrl?: string;
     sound_effects?: SoundEffect[];
     emotion?: "neutral" | "happy" | "serious" | "excited" | "thoughtful";
     transition?: TransitionType;
@@ -80,6 +95,7 @@ interface VideoConfig {
     opening?: OpeningConfig;
     ending?: EndingConfig;
     avatar?: AvatarConfig;
+    textOnly?: boolean; // テキストのみモード（画像なし）
 }
 
 type InputMode = "voice" | "theme" | "url";
@@ -104,8 +120,57 @@ interface AvatarCharacter {
     elevenLabsVoiceId: string;
     geminiVoiceId: string;
     color: string;
+    avatarImageUrl?: string; // For lip sync
 }
 
+// プロバイダーごとのボイスリスト
+interface VoiceOption {
+    id: string;
+    name: string;
+    gender: "female" | "male";
+    emoji: string;
+    description: string;
+    color: string;
+}
+
+// Google Cloud TTS 日本語音声（実動作確認済み）
+// A=女性, D=男性 のパターン
+const GOOGLE_VOICE_OPTIONS: VoiceOption[] = [
+    { id: "ja-JP-Wavenet-A", name: "ハナ", gender: "female", emoji: "🌷", description: "落ち着いた女性ボイス", color: "from-pink-400 to-rose-500" },
+    { id: "ja-JP-Wavenet-D", name: "タケシ", gender: "male", emoji: "👨‍🏫", description: "信頼感のある男性ボイス", color: "from-blue-400 to-indigo-500" },
+];
+
+const ELEVENLABS_VOICE_OPTIONS: VoiceOption[] = [
+    { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", gender: "female", emoji: "👩", description: "ニュースキャスター風", color: "from-pink-400 to-rose-500" },
+    { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", gender: "female", emoji: "💃", description: "落ち着いた大人の女性", color: "from-purple-400 to-pink-500" },
+    { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", gender: "female", emoji: "🎵", description: "元気で明るい女性", color: "from-cyan-400 to-blue-500" },
+    { id: "VR6AewLTigWG4xSOukaG", name: "Arnold", gender: "male", emoji: "🎬", description: "深みのある男性", color: "from-blue-400 to-indigo-500" },
+    { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", gender: "male", emoji: "🎧", description: "ナレーター風", color: "from-green-400 to-emerald-500" },
+    { id: "yoZ06aMxZJJ28mfd3POQ", name: "Sam", gender: "male", emoji: "📻", description: "若々しい男性", color: "from-amber-400 to-orange-500" },
+];
+
+const GEMINI_VOICE_OPTIONS: VoiceOption[] = [
+    // 女性ボイス (4)
+    { id: "Zephyr", name: "Zephyr", gender: "female", emoji: "🌸", description: "明るい女性声", color: "from-pink-400 to-rose-500" },
+    { id: "Kore", name: "Kore", gender: "female", emoji: "🌙", description: "柔らかい女性声", color: "from-purple-400 to-pink-500" },
+    { id: "Leda", name: "Leda", gender: "female", emoji: "💫", description: "温かみのある女性声", color: "from-cyan-400 to-blue-500" },
+    { id: "Aoede", name: "Aoede", gender: "female", emoji: "🎭", description: "自然な女性声", color: "from-violet-400 to-purple-500" },
+    // 男性ボイス (4)
+    { id: "Puck", name: "Puck", gender: "male", emoji: "🎪", description: "活発な男性声", color: "from-amber-400 to-orange-500" },
+    { id: "Charon", name: "Charon", gender: "male", emoji: "⚓", description: "落ち着いた男性声", color: "from-blue-400 to-indigo-500" },
+    { id: "Fenrir", name: "Fenrir", gender: "male", emoji: "🐺", description: "力強い男性声", color: "from-green-400 to-emerald-500" },
+    { id: "Orus", name: "Orus", gender: "male", emoji: "📚", description: "知的な男性声", color: "from-teal-400 to-cyan-500" },
+];
+
+// Gemini TTS Models
+const GEMINI_TTS_MODELS = [
+    { id: "gemini-2.5-flash-preview-tts", name: "Flash Preview", description: "バランス型（デフォルト）" },
+    { id: "gemini-2.5-flash-tts", name: "Flash", description: "高速・安定版" },
+    { id: "gemini-2.5-pro-tts", name: "Pro", description: "最高品質（低速）" },
+    { id: "gemini-2.5-flash-lite-preview-tts", name: "Flash Lite", description: "最速・軽量" },
+];
+
+// 後方互換性のための旧AVATAR_CHARACTERS（生成時に使用）
 const ELEVENLABS_VOICES = {
     female1: "EXAVITQu4vr4xnSDxMaL",
     female2: "21m00Tcm4TlvDq8ikWAM",
@@ -123,14 +188,21 @@ const GEMINI_VOICES = {
     male3: "Puck",
 };
 
+// アバターキャラクター（Google音声: A=女性, D=男性）
 const AVATAR_CHARACTERS: AvatarCharacter[] = [
-    { id: "yuki", name: "ユキ", gender: "female", emoji: "👩‍💼", personality: "明るく親しみやすいお姉さん", googleVoiceId: "ja-JP-Neural2-C", elevenLabsVoiceId: ELEVENLABS_VOICES.female1, geminiVoiceId: GEMINI_VOICES.female1, color: "from-pink-400 to-rose-500" },
-    { id: "sakura", name: "サクラ", gender: "female", emoji: "🌸", personality: "落ち着いた大人の女性", googleVoiceId: "ja-JP-Wavenet-A", elevenLabsVoiceId: ELEVENLABS_VOICES.female2, geminiVoiceId: GEMINI_VOICES.female1, color: "from-purple-400 to-pink-500" },
-    { id: "miku", name: "ミク", gender: "female", emoji: "💫", personality: "元気いっぱいのアイドル風", googleVoiceId: "ja-JP-Wavenet-B", elevenLabsVoiceId: ELEVENLABS_VOICES.female3, geminiVoiceId: GEMINI_VOICES.female2, color: "from-cyan-400 to-blue-500" },
-    { id: "takeshi", name: "タケシ", gender: "male", emoji: "👨‍🏫", personality: "頼れる先生タイプ", googleVoiceId: "ja-JP-Neural2-B", elevenLabsVoiceId: ELEVENLABS_VOICES.male1, geminiVoiceId: GEMINI_VOICES.male1, color: "from-blue-400 to-indigo-500" },
-    { id: "ken", name: "ケン", gender: "male", emoji: "🎤", personality: "若くてエネルギッシュ", googleVoiceId: "ja-JP-Neural2-D", elevenLabsVoiceId: ELEVENLABS_VOICES.male3, geminiVoiceId: GEMINI_VOICES.male3, color: "from-green-400 to-emerald-500" },
-    { id: "hiroshi", name: "ヒロシ", gender: "male", emoji: "📚", personality: "物静かな知識人", googleVoiceId: "ja-JP-Wavenet-C", elevenLabsVoiceId: ELEVENLABS_VOICES.male2, geminiVoiceId: GEMINI_VOICES.male2, color: "from-amber-400 to-orange-500" },
+    { id: "sakura", name: "サクラ", gender: "female", emoji: "🌸", personality: "落ち着いた大人の女性", googleVoiceId: "ja-JP-Wavenet-A", elevenLabsVoiceId: ELEVENLABS_VOICES.female1, geminiVoiceId: GEMINI_VOICES.female1, color: "from-pink-400 to-rose-500" },
+    { id: "tanaka", name: "タナカ", gender: "male", emoji: "👨‍🏫", personality: "頼れる技術者タイプ", googleVoiceId: "ja-JP-Wavenet-D", elevenLabsVoiceId: ELEVENLABS_VOICES.male1, geminiVoiceId: GEMINI_VOICES.male1, color: "from-blue-400 to-indigo-500" },
 ];
+
+// プロバイダーに応じたボイスリストを取得
+function getVoiceOptionsForProvider(provider: TTSProvider): VoiceOption[] {
+    switch (provider) {
+        case "google": return GOOGLE_VOICE_OPTIONS;
+        case "elevenlabs": return ELEVENLABS_VOICE_OPTIONS;
+        case "gemini": return GEMINI_VOICE_OPTIONS;
+        default: return GOOGLE_VOICE_OPTIONS;
+    }
+}
 
 function normalizeUrl(url: string): string {
     const trimmed = url.trim();
@@ -165,10 +237,20 @@ export default function Home() {
     const [currentCost, setCurrentCost] = useState(0);
     const [selectedAvatar, setSelectedAvatar] = useState<AvatarCharacter>(AVATAR_CHARACTERS[0]);
     const [ttsProvider, setTtsProvider] = useState<TTSProvider>("google");
+    const [selectedVoiceId, setSelectedVoiceId] = useState<string>(GOOGLE_VOICE_OPTIONS[0].id); // 選択中のボイスID
+    const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>("gemini-2.5-flash-preview-tts"); // Gemini TTSモデル
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
+    const [imageModel, setImageModel] = useState<"flash" | "pro">("flash"); // flash=高速3Flash, pro=高品質3Pro
     const [openingEnabled, setOpeningEnabled] = useState(true);
     const [endingEnabled, setEndingEnabled] = useState(true);
     const [avatarEnabled, setAvatarEnabled] = useState(false);
+    const [textOnlyMode, setTextOnlyMode] = useState(false); // テキストのみモード（画像なし）
+    const [lipSyncEnabled, setLipSyncEnabled] = useState(false); // リップシンク機能
+    const [lipSyncAvailable, setLipSyncAvailable] = useState(false); // サービス利用可能か
+    const [avatarImage, setAvatarImage] = useState<File | null>(null); // カスタムアバター画像
+    const [customAvatar, setCustomAvatar] = useState<Avatar | null>(null); // カスタムアバター（DB）
+    const [showAvatarManager, setShowAvatarManager] = useState(false); // アバター管理画面表示
+    const [showLipSyncTester, setShowLipSyncTester] = useState(false); // リップシンクテスト画面
     const [videoHistory, setVideoHistory] = useState<DBVideo[]>([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [totalCosts, setTotalCosts] = useState({ totalUsd: 0, thisMonth: 0 });
@@ -186,6 +268,17 @@ export default function Home() {
     const [editingSceneIndex, setEditingSceneIndex] = useState<number | null>(null);
     const [processingIndex, setProcessingIndex] = useState<number>(-1); // 現在処理中のシーンインデックス
 
+    // MP4レンダリング states
+    const [isRendering, setIsRendering] = useState(false);
+
+    // Project sync states (cross-device)
+    const [currentProject, setCurrentProject] = useState<Project | null>(null);
+    const [themeHistory, setThemeHistory] = useState<ThemeHistoryItem[]>([]);
+    const [isRestoringProject, setIsRestoringProject] = useState(false);
+    const [renderProgress, setRenderProgress] = useState(0);
+    const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
+    const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
     // Audio ref for completion sound
     const completionSoundRef = useRef<HTMLAudioElement | null>(null);
 
@@ -196,6 +289,52 @@ export default function Home() {
             completionSoundRef.current.play().catch(() => {});
         }
     }, []);
+
+    // Voice preview state
+    const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
+    const [previewAudio, setPreviewAudio] = useState<HTMLAudioElement | null>(null);
+
+    // Preview voice sample
+    const previewVoice = useCallback(async () => {
+        if (isPreviewingVoice) {
+            // Stop current preview
+            if (previewAudio) {
+                previewAudio.pause();
+                previewAudio.currentTime = 0;
+            }
+            setIsPreviewingVoice(false);
+            return;
+        }
+
+        setIsPreviewingVoice(true);
+        try {
+            const voiceOptions = getVoiceOptionsForProvider(ttsProvider);
+            const currentVoice = voiceOptions.find(v => v.id === selectedVoiceId) || voiceOptions[0];
+            const sampleText = `こんにちは、${currentVoice.name}です。よろしくお願いします。`;
+
+            console.log("[Voice Preview] Provider:", ttsProvider, "VoiceId:", selectedVoiceId);
+
+            const res = await axios.post("/api/generate-voice", {
+                text: sampleText,
+                config: {
+                    provider: ttsProvider,
+                    voice: selectedVoiceId,
+                    model: ttsProvider === "gemini" ? selectedGeminiModel : undefined,
+                },
+            });
+
+            if (res.data.audioUrl) {
+                const audio = new Audio(res.data.audioUrl);
+                setPreviewAudio(audio);
+                audio.onended = () => setIsPreviewingVoice(false);
+                audio.onerror = () => setIsPreviewingVoice(false);
+                await audio.play();
+            }
+        } catch (error) {
+            console.error("Voice preview failed:", error);
+            setIsPreviewingVoice(false);
+        }
+    }, [selectedVoiceId, ttsProvider, isPreviewingVoice, previewAudio]);
 
     // Track active users (heartbeat every 30 seconds)
     useEffect(() => {
@@ -228,13 +367,161 @@ export default function Home() {
         }
     }, [user, authLoading, router]);
 
+    // Check lip sync service availability
+    useEffect(() => {
+        const checkAvailability = async () => {
+            const available = await checkLipSyncAvailability();
+            setLipSyncAvailable(available);
+            if (!available) {
+                console.warn("Lip sync service not available");
+            }
+        };
+        checkAvailability();
+    }, []);
+
+    // Restore theme text from localStorage on mount
+    useEffect(() => {
+        const savedTheme = localStorage.getItem("draftThemeText");
+        if (savedTheme) {
+            setThemeText(savedTheme);
+        }
+    }, []);
+
+    // Save theme text to localStorage when it changes
+    useEffect(() => {
+        if (themeText) {
+            localStorage.setItem("draftThemeText", themeText);
+        }
+    }, [themeText]);
+
+    // Restore settings from localStorage on mount
+    useEffect(() => {
+        const savedSettings = localStorage.getItem("videoGeneratorSettings");
+        if (savedSettings) {
+            try {
+                const settings = JSON.parse(savedSettings);
+                if (settings.ttsProvider) setTtsProvider(settings.ttsProvider);
+                if (settings.selectedVoiceId) setSelectedVoiceId(settings.selectedVoiceId);
+                if (settings.imageModel) setImageModel(settings.imageModel);
+                if (settings.aspectRatio) setAspectRatio(settings.aspectRatio);
+                if (settings.textOnlyMode !== undefined) setTextOnlyMode(settings.textOnlyMode);
+                if (settings.openingEnabled !== undefined) setOpeningEnabled(settings.openingEnabled);
+                if (settings.endingEnabled !== undefined) setEndingEnabled(settings.endingEnabled);
+                if (settings.avatarEnabled !== undefined) setAvatarEnabled(settings.avatarEnabled);
+                if (settings.lipSyncEnabled !== undefined) setLipSyncEnabled(settings.lipSyncEnabled);
+            } catch (e) {
+                console.error("Failed to restore settings:", e);
+            }
+        }
+    }, []);
+
+    // Save settings to localStorage when they change
+    useEffect(() => {
+        const settings = {
+            ttsProvider,
+            selectedVoiceId,
+            imageModel,
+            aspectRatio,
+            textOnlyMode,
+            openingEnabled,
+            endingEnabled,
+            avatarEnabled,
+            lipSyncEnabled,
+        };
+        localStorage.setItem("videoGeneratorSettings", JSON.stringify(settings));
+    }, [ttsProvider, selectedVoiceId, imageModel, aspectRatio, textOnlyMode, openingEnabled, endingEnabled, avatarEnabled, lipSyncEnabled]);
+
     // Load user data
     useEffect(() => {
         if (user) {
             loadUrlHistory();
             loadCosts();
+            loadVideoHistory();
+            loadThemeHistory();
+            loadCurrentProject();
         }
     }, [user]);
+
+    // Load theme history from Supabase
+    const loadThemeHistory = async () => {
+        if (!user) return;
+        try {
+            const history = await getThemeHistory(user.id, 50);
+            setThemeHistory(history);
+        } catch (error) {
+            console.error("Failed to load theme history:", error);
+        }
+    };
+
+    // Load current project (for cross-device restore)
+    const loadCurrentProject = async () => {
+        if (!user) return;
+        try {
+            const project = await getCurrentProject(user.id);
+            if (project && project.scenes && project.scenes.length > 0) {
+                setCurrentProject(project);
+                // Ask user if they want to restore
+                setIsRestoringProject(true);
+            }
+        } catch (error) {
+            console.error("Failed to load current project:", error);
+        }
+    };
+
+    // Restore project state
+    const restoreProject = (project: Project) => {
+        if (project.theme_text) setThemeText(project.theme_text);
+        if (project.url_input) setUrlInput(project.url_input);
+        if (project.scenes) {
+            setVideoConfig({
+                title: project.title,
+                scenes: project.scenes as Scene[],
+                aspectRatio: project.aspect_ratio as AspectRatio,
+            });
+            setCurrentStep(project.generation_step as GenerationStep || "script");
+        }
+        if (project.settings) {
+            const settings = project.settings as ProjectSettings;
+            if (settings.ttsProvider) setTtsProvider(settings.ttsProvider);
+            if (settings.selectedVoiceId) setSelectedVoiceId(settings.selectedVoiceId);
+            if (settings.imageModel) setImageModel(settings.imageModel);
+            if (settings.aspectRatio) setAspectRatio(settings.aspectRatio);
+            if (settings.generationMode) setGenerationMode(settings.generationMode);
+        }
+        setIsRestoringProject(false);
+        setShowResult(true);
+    };
+
+    // Auto-save project when videoConfig changes
+    useEffect(() => {
+        if (!user || !videoConfig || !currentProject) return;
+        debouncedSave(async () => {
+            await saveScenesToProject(
+                currentProject.id,
+                videoConfig.scenes,
+                currentStep,
+                processingIndex
+            );
+        }, 2000);
+    }, [videoConfig, currentStep, processingIndex]);
+
+    // Handle theme history selection
+    const handleThemeHistorySelect = (item: ThemeHistoryItem) => {
+        setThemeText(item.theme_text);
+        if (item.input_mode === "url") {
+            setInputMode("url");
+            setUrlInput(item.theme_text);
+        } else {
+            setInputMode("theme");
+        }
+    };
+
+    // Handle theme history delete
+    const handleThemeHistoryDelete = async (themeId: string) => {
+        if (!user) return;
+        await deleteThemeFromHistory(themeId, user.id);
+        setThemeHistory(prev => prev.filter(t => t.id !== themeId));
+    };
 
     const loadUrlHistory = async () => {
         if (!user) return;
@@ -328,7 +615,7 @@ export default function Home() {
         try {
             const success = await deleteVideo(videoId);
             if (success) {
-                setVideoHistory(prev => prev.filter(v => v.id !== videoId));
+                await loadVideoHistory(); // Reload from database
             }
         } catch (error) {
             console.error("Failed to delete video:", error);
@@ -412,7 +699,8 @@ export default function Home() {
             for (let i = 0; i < updatedScenes.length; i++) {
                 const imgRes = await axios.post("/api/generate-image", {
                     prompt: updatedScenes[i].image_prompt,
-                    userId: user.id
+                    userId: user.id,
+                    model: imageModel  // flash or pro
                 });
                 updatedScenes[i].imageUrl = imgRes.data.imageUrl;
                 setGenerationProgress(20 + ((i + 1) / updatedScenes.length) * 30);
@@ -422,24 +710,47 @@ export default function Home() {
             }
             setGenerationProgress(50);
 
-            // 3. Generate Audio
-            const currentVoiceId = ttsProvider === "gemini"
-                ? selectedAvatar.geminiVoiceId
-                : ttsProvider === "elevenlabs"
-                    ? selectedAvatar.elevenLabsVoiceId
-                    : selectedAvatar.googleVoiceId;
+            // 3. Generate Audio - Use selectedVoiceId directly
+            const currentVoiceId = selectedVoiceId;
+
+            // Debug: Log voice selection for auto mode
+            console.log("[Client Auto] Voice config:", {
+                provider: ttsProvider,
+                voiceId: currentVoiceId
+            });
 
             for (let i = 0; i < updatedScenes.length; i++) {
                 try {
                     const audioRes = await axios.post("/api/generate-voice", {
                         text: applyPronunciationDictionary(updatedScenes[i].avatar_script),
-                        config: { provider: ttsProvider, voice: currentVoiceId, speed: ttsProvider === "google" ? 1.0 : undefined },
+                        config: { provider: ttsProvider, voice: currentVoiceId, speed: ttsProvider === "google" ? 1.0 : undefined, model: ttsProvider === "gemini" ? selectedGeminiModel : undefined },
                         userId: user.id
                     });
                     updatedScenes[i].audioUrl = audioRes.data.audioUrl;
 
                     const audioDuration = await getAudioDuration(audioRes.data.audioUrl);
                     updatedScenes[i].duration = Math.ceil(audioDuration) + 1;
+
+                    // Generate lip sync video if enabled
+                    if (lipSyncEnabled && lipSyncAvailable) {
+                        try {
+                            // カスタムアバターがあればそれを使う、なければデフォルト
+                            const avatarImageUrl = customAvatar?.image_url
+                                || selectedAvatar.avatarImageUrl
+                                || getDefaultAvatarImage(selectedAvatar.id);
+                            if (avatarImageUrl) {
+                                console.log(`[Client Auto] Generating lip sync for scene ${i + 1}`);
+                                const lipSyncVideoUrl = await generateLipSyncVideo(
+                                    audioRes.data.audioUrl,
+                                    avatarImageUrl,
+                                    { quality: "Improved" }
+                                );
+                                updatedScenes[i].lipSyncVideoUrl = lipSyncVideoUrl;
+                            }
+                        } catch (error) {
+                            console.error(`[Client Auto] Lip sync failed for scene ${i + 1}:`, error);
+                        }
+                    }
 
                     const charCount = updatedScenes[i].avatar_script.length;
                     await saveCost(user.id, null, {
@@ -502,9 +813,54 @@ export default function Home() {
 
             await saveCompletedVideo(finalConfig, normalizedUrl);
             await loadCosts();
+            await loadVideoHistory();
+
+            // 全自動モード：MP4レンダリングまで自動実行
+            try {
+                setIsRendering(true);
+                setRenderProgress(10);
+
+                // プロジェクトを作成
+                const projectRes = await axios.post("/api/projects", {
+                    title: finalConfig.title,
+                    description: `${inputMode}から生成`,
+                    aspectRatio: finalConfig.aspectRatio || "16:9",
+                    script: finalConfig,
+                    sourceType: inputMode,
+                    sourceText: inputMode === "theme" ? themeText : inputMode === "url" ? normalizedUrl : transcribedText,
+                });
+
+                let projectId = null;
+                if (projectRes.data.success) {
+                    projectId = projectRes.data.project.id;
+                    setCurrentProjectId(projectId);
+                }
+
+                setRenderProgress(30);
+
+                // MP4レンダリング実行
+                const renderRes = await axios.post("/api/render", {
+                    videoConfig: finalConfig,
+                    projectId,
+                });
+
+                if (renderRes.data.success) {
+                    setRenderedVideoUrl(renderRes.data.videoUrl);
+                    setRenderProgress(100);
+
+                    // レンダリングコスト記録（ローカル処理のため無料）
+                    await saveCost(user.id, 0, "render", `Auto render: ${finalConfig.title}`);
+                    await loadCosts();
+                }
+            } catch (renderError) {
+                console.error("MP4 rendering failed:", renderError);
+                alert("MP4レンダリングに失敗しました。プレビューは利用可能です。");
+            } finally {
+                setIsRendering(false);
+            }
 
             setShowResult(true);
-            playCompletionSound(); // 完了音を再生
+            // playCompletionSound(); // 完了音を再生 - Disabled to prevent 404 error
         } catch (error) {
             console.error("Generation failed", error);
             alert("動画生成に失敗しました。");
@@ -564,6 +920,7 @@ export default function Home() {
                 opening: openingEnabled ? { enabled: true, duration: 3 } : { enabled: false },
                 ending: endingEnabled ? { enabled: true, duration: 4, callToAction: "ご視聴ありがとうございました" } : { enabled: false },
                 avatar: avatarEnabled ? { enabled: true, position: "right" as const, size: "medium" as const } : { enabled: false },
+                textOnly: textOnlyMode,
             };
 
             setVideoConfig(initialConfig);
@@ -587,7 +944,8 @@ export default function Home() {
             const scene = videoConfig.scenes[sceneIndex];
             const imgRes = await axios.post("/api/generate-image", {
                 prompt: scene.image_prompt,
-                userId: user.id
+                userId: user.id,
+                model: imageModel  // flash or pro
             });
 
             const updatedScenes = [...videoConfig.scenes];
@@ -627,15 +985,19 @@ export default function Home() {
         setProcessingIndex(sceneIndex);
         try {
             const scene = videoConfig.scenes[sceneIndex];
-            const currentVoiceId = ttsProvider === "gemini"
-                ? selectedAvatar.geminiVoiceId
-                : ttsProvider === "elevenlabs"
-                    ? selectedAvatar.elevenLabsVoiceId
-                    : selectedAvatar.googleVoiceId;
+            // Use selectedVoiceId directly
+            const currentVoiceId = selectedVoiceId;
+
+            // Debug: Log voice selection
+            console.log("[Client] Generating audio with:", {
+                provider: ttsProvider,
+                voiceId: currentVoiceId,
+                sceneIndex
+            });
 
             const audioRes = await axios.post("/api/generate-voice", {
                 text: applyPronunciationDictionary(scene.avatar_script),
-                config: { provider: ttsProvider, voice: currentVoiceId, speed: ttsProvider === "google" ? 1.0 : undefined },
+                config: { provider: ttsProvider, voice: currentVoiceId, speed: ttsProvider === "google" ? 1.0 : undefined, model: ttsProvider === "gemini" ? selectedGeminiModel : undefined },
                 userId: user.id
             });
 
@@ -644,6 +1006,31 @@ export default function Home() {
             const updatedScenes = [...videoConfig.scenes];
             updatedScenes[sceneIndex].audioUrl = audioRes.data.audioUrl;
             updatedScenes[sceneIndex].duration = Math.ceil(audioDuration) + 1;
+
+            // Generate lip sync video if enabled
+            if (lipSyncEnabled && lipSyncAvailable) {
+                try {
+                    // カスタムアバターがあればそれを使う、なければデフォルト
+                    const avatarImageUrl = customAvatar?.image_url
+                        || selectedAvatar.avatarImageUrl
+                        || getDefaultAvatarImage(selectedAvatar.id);
+                    if (avatarImageUrl) {
+                        console.log("[Client] Generating lip sync video for scene", sceneIndex);
+                        const lipSyncVideoUrl = await generateLipSyncVideo(
+                            audioRes.data.audioUrl,
+                            avatarImageUrl,
+                            { quality: "Improved" }
+                        );
+                        updatedScenes[sceneIndex].lipSyncVideoUrl = lipSyncVideoUrl;
+                    } else {
+                        console.warn("[Client] No avatar image available for lip sync");
+                    }
+                } catch (error) {
+                    console.error("[Client] Lip sync failed:", error);
+                    // Continue without lip sync
+                }
+            }
+
             setVideoConfig({ ...videoConfig, scenes: updatedScenes });
 
             const charCount = scene.avatar_script.length;
@@ -759,7 +1146,8 @@ export default function Home() {
 
             await saveCompletedVideo(finalConfig, inputMode === "url" ? normalizeUrl(urlInput) : undefined);
             await loadCosts();
-            playCompletionSound();
+            await loadVideoHistory();
+            // playCompletionSound(); // Disabled to prevent 404 error
         } finally {
             setIsProcessing(false);
         }
@@ -772,12 +1160,64 @@ export default function Home() {
         setEditingSceneIndex(null);
         setProcessingIndex(-1);
         setCurrentCost(0);
+        setRenderedVideoUrl(null);
+        setCurrentProjectId(null);
+    };
+
+    // MP4レンダリング
+    const renderToMP4 = async () => {
+        if (!videoConfig || !user) return;
+
+        setIsRendering(true);
+        setRenderProgress(0);
+
+        try {
+            // プロジェクトを作成または更新
+            if (!currentProjectId) {
+                const projectRes = await axios.post("/api/projects", {
+                    title: videoConfig.title,
+                    description: `${inputMode}から生成`,
+                    aspectRatio: videoConfig.aspectRatio || "16:9",
+                    script: videoConfig,
+                    sourceType: inputMode,
+                    sourceText: inputMode === "theme" ? themeText : inputMode === "url" ? urlInput : transcribedText,
+                });
+
+                if (projectRes.data.success) {
+                    setCurrentProjectId(projectRes.data.project.id);
+                }
+            }
+
+            // レンダリング開始
+            setRenderProgress(10);
+            const renderRes = await axios.post("/api/render", {
+                videoConfig,
+                projectId: currentProjectId,
+            });
+
+            if (renderRes.data.success) {
+                setRenderedVideoUrl(renderRes.data.videoUrl);
+                setRenderProgress(100);
+
+                // コスト記録
+                const renderCost = 0; // レンダリング自体は無料（ローカル処理）
+                await saveCost(user.id, renderCost, "render", `Render: ${videoConfig.title}`);
+                await loadCosts();
+
+                alert("MP4レンダリングが完了しました！");
+            }
+        } catch (error: any) {
+            console.error("Render error:", error);
+            alert(`レンダリングに失敗しました: ${error.message || "不明なエラー"}`);
+        } finally {
+            setIsRendering(false);
+        }
     };
 
     // Loading state
     if (authLoading) {
         return (
-            <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center" suppressHydrationWarning>
                 <Loader2 className="w-8 h-8 animate-spin text-white" />
             </div>
         );
@@ -788,13 +1228,13 @@ export default function Home() {
     }
 
     return (
-        <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-            {/* Completion Sound */}
-            <audio
+        <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" suppressHydrationWarning>
+            {/* Completion Sound - Disabled to prevent 404 error */}
+            {/* <audio
                 ref={completionSoundRef}
                 src="/sounds/complete.mp3"
                 preload="auto"
-            />
+            /> */}
 
             {/* Header */}
             <header className="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-lg border-b border-white/10">
@@ -817,6 +1257,15 @@ export default function Home() {
                             <DollarSign className="w-3 h-3 text-green-400" />
                             <span className="text-slate-300">今月: {formatCostJPY(totalCosts.thisMonth)}</span>
                         </div>
+
+                        {/* Editor link */}
+                        <Link
+                            href="/editor"
+                            className="flex items-center gap-1 px-3 py-1.5 bg-purple-500/20 border border-purple-500/30 rounded-lg text-xs text-purple-300 hover:bg-purple-500/30 transition-colors"
+                        >
+                            <Edit3 className="w-3 h-3" />
+                            <span className="hidden sm:inline">エディター</span>
+                        </Link>
 
                         {/* Admin link */}
                         {isAdmin && (
@@ -967,8 +1416,42 @@ export default function Home() {
                             ))}
                         </div>
 
+                        {/* MP4レンダリングボタン */}
+                        {isRendering ? (
+                            <div className="bg-blue-500/10 rounded-xl p-6 border border-blue-500/20">
+                                <div className="text-center mb-4">
+                                    <Loader2 className="w-10 h-10 text-blue-400 animate-spin mx-auto mb-2" />
+                                    <p className="text-sm text-blue-300 font-medium">MP4レンダリング中...</p>
+                                    <p className="text-xs text-slate-400 mt-1">しばらくお待ちください（数分かかる場合があります）</p>
+                                </div>
+                                <Progress value={renderProgress} className="w-full" />
+                            </div>
+                        ) : renderedVideoUrl ? (
+                            <div className="bg-green-500/10 rounded-xl p-6 border border-green-500/20 space-y-3">
+                                <div className="flex items-center gap-2 text-green-400">
+                                    <Check className="w-5 h-5" />
+                                    <span className="font-medium">レンダリング完了！</span>
+                                </div>
+                                <a
+                                    href={renderedVideoUrl}
+                                    download={`${videoConfig.title}.mp4`}
+                                    className="block w-full py-3 px-4 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg text-center transition-colors"
+                                >
+                                    MP4をダウンロード
+                                </a>
+                            </div>
+                        ) : (
+                            <Button
+                                onClick={renderToMP4}
+                                className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold"
+                            >
+                                <Video className="w-5 h-5 mr-2" />
+                                MP4として保存
+                            </Button>
+                        )}
+
                         <Button
-                            onClick={() => { setShowResult(false); setVideoConfig(null); }}
+                            onClick={() => { setShowResult(false); setVideoConfig(null); setRenderedVideoUrl(null); setCurrentProjectId(null); }}
                             className="w-full bg-gradient-to-r from-blue-500 to-purple-500"
                         >
                             新しく作成
@@ -991,21 +1474,140 @@ export default function Home() {
                                 <div className="px-4 pb-4 space-y-4 border-t border-white/10 pt-4">
                                     {/* TTS Provider */}
                                     <div>
-                                        <label className="text-xs text-slate-400 mb-2 block">音声エンジン</label>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="text-xs text-slate-400">音声エンジン</label>
+                                            <Link
+                                                href="/voice-test"
+                                                className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                                            >
+                                                音声テスト →
+                                            </Link>
+                                        </div>
                                         <div className="flex gap-2">
                                             {(["google", "elevenlabs", "gemini"] as TTSProvider[]).map((p) => (
                                                 <button
                                                     key={p}
-                                                    onClick={() => setTtsProvider(p)}
+                                                    onClick={() => {
+                                                        setTtsProvider(p);
+                                                        // プロバイダー切替時にデフォルトボイスを選択
+                                                        const voices = getVoiceOptionsForProvider(p);
+                                                        setSelectedVoiceId(voices[0].id);
+                                                        // Stop preview if playing
+                                                        if (previewAudio) {
+                                                            previewAudio.pause();
+                                                            setIsPreviewingVoice(false);
+                                                        }
+                                                    }}
                                                     className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium ${
                                                         ttsProvider === p
                                                             ? "bg-blue-500 text-white"
                                                             : "bg-white/5 text-slate-300"
                                                     }`}
                                                 >
-                                                    {p === "google" ? "Google" : p === "elevenlabs" ? "ElevenLabs" : "Gemini ✨"}
+                                                    {p === "google" ? "Google" : p === "elevenlabs" ? "ElevenLabs" : "Gemini 2.5 TTS"}
                                                 </button>
                                             ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Gemini TTS Model Selection (only when Gemini is selected) */}
+                                    {ttsProvider === "gemini" && (
+                                        <div className="mt-3">
+                                            <label className="text-xs text-slate-400 mb-2 block">TTSモデル</label>
+                                            <div className="grid grid-cols-2 gap-1">
+                                                {GEMINI_TTS_MODELS.map((model) => (
+                                                    <button
+                                                        key={model.id}
+                                                        onClick={() => setSelectedGeminiModel(model.id)}
+                                                        className={`py-1.5 px-2 rounded text-[10px] transition-colors text-left ${
+                                                            selectedGeminiModel === model.id
+                                                                ? "bg-purple-500/80 text-white"
+                                                                : "bg-white/5 text-slate-300 hover:bg-white/10"
+                                                        }`}
+                                                        title={model.description}
+                                                    >
+                                                        <span className="font-medium">{model.name}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Narrator selection - Provider-specific voices */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="text-xs text-slate-400">
+                                                ナレーター: {(() => {
+                                                    const voices = getVoiceOptionsForProvider(ttsProvider);
+                                                    const voice = voices.find(v => v.id === selectedVoiceId);
+                                                    return voice ? `${voice.name} (${voice.description})` : "選択してください";
+                                                })()}
+                                            </label>
+                                            <button
+                                                onClick={previewVoice}
+                                                disabled={isPreviewingVoice}
+                                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-all ${
+                                                    isPreviewingVoice
+                                                        ? "bg-green-500 text-white"
+                                                        : "bg-white/10 text-slate-300 hover:bg-white/20"
+                                                }`}
+                                            >
+                                                <Volume2 className={`w-3 h-3 ${isPreviewingVoice ? "animate-pulse" : ""}`} />
+                                                {isPreviewingVoice ? "再生中..." : "試聴"}
+                                            </button>
+                                        </div>
+                                        <div className="flex justify-center gap-2 flex-wrap">
+                                            {getVoiceOptionsForProvider(ttsProvider).map((voice) => (
+                                                <button
+                                                    key={voice.id}
+                                                    onClick={() => {
+                                                        setSelectedVoiceId(voice.id);
+                                                        // Stop preview if playing
+                                                        if (previewAudio) {
+                                                            previewAudio.pause();
+                                                            setIsPreviewingVoice(false);
+                                                        }
+                                                    }}
+                                                    title={`${voice.name} - ${voice.description}`}
+                                                    className={`w-10 h-10 rounded-full bg-gradient-to-br ${voice.color} flex items-center justify-center text-lg transition-all ${
+                                                        selectedVoiceId === voice.id
+                                                            ? "ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-800 scale-110"
+                                                            : "opacity-60 hover:opacity-80"
+                                                    }`}
+                                                >
+                                                    {voice.emoji}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 text-center mt-2">
+                                            Voice ID: {selectedVoiceId}
+                                        </p>
+                                    </div>
+
+                                    {/* Image Model Selection */}
+                                    <div>
+                                        <label className="text-xs text-slate-400 mb-2 block">画像生成モデル</label>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setImageModel("flash")}
+                                                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium ${
+                                                    imageModel === "flash"
+                                                        ? "bg-amber-500 text-white"
+                                                        : "bg-white/5 text-slate-300"
+                                                }`}
+                                            >
+                                                ⚡ 3Flash (高速)
+                                            </button>
+                                            <button
+                                                onClick={() => setImageModel("pro")}
+                                                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium ${
+                                                    imageModel === "pro"
+                                                        ? "bg-amber-500 text-white"
+                                                        : "bg-white/5 text-slate-300"
+                                                }`}
+                                            >
+                                                ✨ 3Pro (高品質)
+                                            </button>
                                         </div>
                                     </div>
 
@@ -1033,6 +1635,84 @@ export default function Home() {
                                             </button>
                                         </div>
                                     </div>
+
+                                    {/* Image Mode Toggle */}
+                                    <div>
+                                        <label className="text-xs text-slate-400 mb-2 block">画像モード</label>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setTextOnlyMode(false)}
+                                                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1 ${
+                                                    !textOnlyMode ? "bg-green-500 text-white" : "bg-white/5 text-slate-300"
+                                                }`}
+                                            >
+                                                <ImageIcon className="w-3 h-3" />
+                                                画像あり
+                                            </button>
+                                            <button
+                                                onClick={() => setTextOnlyMode(true)}
+                                                className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1 ${
+                                                    textOnlyMode ? "bg-cyan-500 text-white" : "bg-white/5 text-slate-300"
+                                                }`}
+                                            >
+                                                <Sparkles className="w-3 h-3" />
+                                                テキストのみ（高速）
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Lip Sync Toggle */}
+                                    {lipSyncAvailable && !textOnlyMode && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-xs text-slate-400">
+                                                    リップシンク
+                                                </label>
+                                                <button
+                                                    onClick={() => setShowLipSyncTester(true)}
+                                                    className="text-xs text-purple-400 hover:text-purple-300 underline"
+                                                >
+                                                    テスト
+                                                </button>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setLipSyncEnabled(false)}
+                                                    disabled={!lipSyncAvailable}
+                                                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium ${
+                                                        !lipSyncEnabled ? "bg-slate-600 text-white" : "bg-white/5 text-slate-300"
+                                                    }`}
+                                                >
+                                                    オフ
+                                                </button>
+                                                <button
+                                                    onClick={() => setLipSyncEnabled(true)}
+                                                    disabled={!lipSyncAvailable}
+                                                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium ${
+                                                        lipSyncEnabled ? "bg-purple-500 text-white" : "bg-white/5 text-slate-300"
+                                                    }`}
+                                                >
+                                                    オン（口パク）
+                                                </button>
+                                            </div>
+                                            {lipSyncEnabled && (
+                                                <div className="mt-2">
+                                                    <button
+                                                        onClick={() => setShowAvatarManager(!showAvatarManager)}
+                                                        className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                                                    >
+                                                        <Users className="w-3 h-3" />
+                                                        {customAvatar ? `選択中: ${customAvatar.name}` : "アバターを選択"}
+                                                    </button>
+                                                    {customAvatar && (
+                                                        <p className="mt-1 text-xs text-slate-400 text-center">
+                                                            ✓ {customAvatar.type === "ai_generated" ? "AI生成" : "写真アップロード"}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {/* OP/ED/Avatar toggles */}
                                     <div className="flex gap-2">
@@ -1062,38 +1742,6 @@ export default function Home() {
                                         </button>
                                     </div>
 
-                                    {/* Avatar selection */}
-                                    <div>
-                                        <label className="text-xs text-slate-400 mb-2 block">
-                                            ナレーター: {selectedAvatar.name}
-                                            <span className="ml-2 text-slate-500">
-                                                ({selectedAvatar.personality})
-                                            </span>
-                                        </label>
-                                        <div className="flex justify-center gap-2">
-                                            {AVATAR_CHARACTERS.map((avatar) => (
-                                                <button
-                                                    key={avatar.id}
-                                                    onClick={() => setSelectedAvatar(avatar)}
-                                                    title={`${avatar.name} - ${avatar.personality}`}
-                                                    className={`w-10 h-10 rounded-full bg-gradient-to-br ${avatar.color} flex items-center justify-center text-lg transition-all ${
-                                                        selectedAvatar.id === avatar.id
-                                                            ? "ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-800 scale-110"
-                                                            : "opacity-60 hover:opacity-80"
-                                                    }`}
-                                                >
-                                                    {avatar.emoji}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <p className="text-[10px] text-slate-500 text-center mt-2">
-                                            使用音声: {ttsProvider === "google"
-                                                ? selectedAvatar.googleVoiceId
-                                                : ttsProvider === "elevenlabs"
-                                                    ? "ElevenLabs " + selectedAvatar.gender
-                                                    : selectedAvatar.geminiVoiceId}
-                                        </p>
-                                    </div>
                                 </div>
                             )}
                         </div>
@@ -1128,6 +1776,16 @@ export default function Home() {
                                 <span className="hidden sm:inline">音声</span>
                             </button>
                         </div>
+
+                        {/* Theme History Slider */}
+                        {inputMode === "theme" && themeHistory.length > 0 && (
+                            <ThemeHistorySlider
+                                history={themeHistory}
+                                onSelect={handleThemeHistorySelect}
+                                onDelete={handleThemeHistoryDelete}
+                                currentTheme={themeText}
+                            />
+                        )}
 
                         {/* Input area */}
                         <div className="bg-white/5 rounded-xl p-4 border border-white/10">
@@ -1211,20 +1869,23 @@ export default function Home() {
                                 {/* Step indicator */}
                                 <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl">
                                     <div className="flex items-center gap-2">
-                                        {["script", "images", "audio", "preview"].map((step, i) => (
+                                        {(textOnlyMode ? ["script", "audio", "preview"] : ["script", "images", "audio", "preview"]).map((step, i, arr) => (
                                             <div key={step} className="flex items-center">
                                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
                                                     currentStep === step ? "bg-amber-500 text-white" :
-                                                    ["script", "images", "audio", "preview"].indexOf(currentStep) > i ? "bg-green-500 text-white" :
+                                                    arr.indexOf(currentStep) > i ? "bg-green-500 text-white" :
                                                     "bg-white/10 text-slate-400"
                                                 }`}>
-                                                    {["script", "images", "audio", "preview"].indexOf(currentStep) > i ? <Check className="w-4 h-4" /> : i + 1}
+                                                    {arr.indexOf(currentStep) > i ? <Check className="w-4 h-4" /> : i + 1}
                                                 </div>
-                                                {i < 3 && <div className={`w-6 h-0.5 ${["script", "images", "audio", "preview"].indexOf(currentStep) > i ? "bg-green-500" : "bg-white/10"}`} />}
+                                                {i < arr.length - 1 && <div className={`w-6 h-0.5 ${arr.indexOf(currentStep) > i ? "bg-green-500" : "bg-white/10"}`} />}
                                             </div>
                                         ))}
                                     </div>
-                                    <span className="text-xs text-slate-400">{formatCostJPY(currentCost)}</span>
+                                    <span className="text-xs text-slate-400">
+                                        {textOnlyMode && <span className="text-cyan-400 mr-2">⚡高速</span>}
+                                        {formatCostJPY(currentCost)}
+                                    </span>
                                 </div>
 
                                 {/* Step 1: Script Preview */}
@@ -1274,15 +1935,22 @@ export default function Home() {
                                             <Button onClick={resetStepMode} variant="outline" className="flex-1 border-slate-600 text-slate-300">
                                                 <X className="w-4 h-4 mr-1" /> キャンセル
                                             </Button>
-                                            <Button onClick={() => setCurrentStep("images")} className="flex-1 bg-amber-500 hover:bg-amber-600">
-                                                画像生成へ <ChevronRight className="w-4 h-4 ml-1" />
+                                            <Button
+                                                onClick={() => setCurrentStep(textOnlyMode ? "audio" : "images")}
+                                                className={`flex-1 ${textOnlyMode ? "bg-cyan-500 hover:bg-cyan-600" : "bg-amber-500 hover:bg-amber-600"}`}
+                                            >
+                                                {textOnlyMode ? (
+                                                    <>音声生成へ <ChevronRight className="w-4 h-4 ml-1" /></>
+                                                ) : (
+                                                    <>画像生成へ <ChevronRight className="w-4 h-4 ml-1" /></>
+                                                )}
                                             </Button>
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Step 2: Image Generation */}
-                                {currentStep === "images" && (
+                                {/* Step 2: Image Generation (skip if textOnlyMode) */}
+                                {currentStep === "images" && !textOnlyMode && (
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between">
                                             <h3 className="text-lg font-bold text-white">🎨 画像生成</h3>
@@ -1379,8 +2047,12 @@ export default function Home() {
                                             ))}
                                         </div>
                                         <div className="flex gap-2">
-                                            <Button onClick={() => setCurrentStep("images")} variant="outline" className="flex-1 border-slate-600 text-slate-300">
-                                                <ChevronLeft className="w-4 h-4 mr-1" /> 画像へ
+                                            <Button
+                                                onClick={() => setCurrentStep(textOnlyMode ? "script" : "images")}
+                                                variant="outline"
+                                                className="flex-1 border-slate-600 text-slate-300"
+                                            >
+                                                <ChevronLeft className="w-4 h-4 mr-1" /> {textOnlyMode ? "台本へ" : "画像へ"}
                                             </Button>
                                             <Button
                                                 onClick={proceedToNextStep}
@@ -1419,6 +2091,41 @@ export default function Home() {
                                             <span className="text-sm text-slate-300">総コスト</span>
                                             <span className="text-sm font-medium text-green-400">{formatCostJPY(currentCost)}</span>
                                         </div>
+
+                                        {/* MP4レンダリングボタン */}
+                                        {isRendering ? (
+                                            <div className="bg-blue-500/10 rounded-xl p-6 border border-blue-500/20">
+                                                <div className="text-center mb-4">
+                                                    <Loader2 className="w-10 h-10 text-blue-400 animate-spin mx-auto mb-2" />
+                                                    <p className="text-sm text-blue-300 font-medium">MP4レンダリング中...</p>
+                                                    <p className="text-xs text-slate-400 mt-1">しばらくお待ちください（数分かかる場合があります）</p>
+                                                </div>
+                                                <Progress value={renderProgress} className="w-full" />
+                                            </div>
+                                        ) : renderedVideoUrl ? (
+                                            <div className="bg-green-500/10 rounded-xl p-6 border border-green-500/20 space-y-3">
+                                                <div className="flex items-center gap-2 text-green-400">
+                                                    <Check className="w-5 h-5" />
+                                                    <span className="font-medium">レンダリング完了！</span>
+                                                </div>
+                                                <a
+                                                    href={renderedVideoUrl}
+                                                    download={`${videoConfig.title}.mp4`}
+                                                    className="block w-full py-3 px-4 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg text-center transition-colors"
+                                                >
+                                                    MP4をダウンロード
+                                                </a>
+                                            </div>
+                                        ) : (
+                                            <Button
+                                                onClick={renderToMP4}
+                                                className="w-full py-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold"
+                                            >
+                                                <Video className="w-5 h-5 mr-2" />
+                                                MP4として保存
+                                            </Button>
+                                        )}
+
                                         <div className="flex gap-2">
                                             <Button onClick={() => setCurrentStep("audio")} variant="outline" className="flex-1 border-slate-600 text-slate-300">
                                                 <ChevronLeft className="w-4 h-4 mr-1" /> 修正する
@@ -1441,13 +2148,25 @@ export default function Home() {
                                         </span>
                                     </div>
                                     <p className="text-sm text-slate-300 mb-2">
-                                        {generationProgress < 20 && "台本を生成中..."}
-                                        {generationProgress >= 20 && generationProgress < 50 && "画像を生成中..."}
-                                        {generationProgress >= 50 && generationProgress < 80 && "音声を生成中..."}
-                                        {generationProgress >= 80 && generationProgress < 95 && "効果音・BGMを追加中..."}
-                                        {generationProgress >= 95 && "最終調整中..."}
+                                        {!isRendering && generationProgress < 20 && "台本を生成中..."}
+                                        {!isRendering && generationProgress >= 20 && generationProgress < 50 && (
+                                            <span className="flex items-center justify-center gap-2">
+                                                画像を生成中...
+                                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-slate-700 rounded-full animate-pulse">
+                                                    {imageModel === "flash" ? (
+                                                        <><span className="text-yellow-400">⚡</span> Gemini 3 Flash</>
+                                                    ) : (
+                                                        <><span className="text-purple-400">✨</span> Gemini 3 Pro</>
+                                                    )}
+                                                </span>
+                                            </span>
+                                        )}
+                                        {!isRendering && generationProgress >= 50 && generationProgress < 80 && "音声を生成中..."}
+                                        {!isRendering && generationProgress >= 80 && generationProgress < 95 && "効果音・BGMを追加中..."}
+                                        {!isRendering && generationProgress >= 95 && "最終調整中..."}
+                                        {isRendering && "MP4動画をレンダリング中...（数分かかる場合があります）"}
                                     </p>
-                                    <Progress value={generationProgress} className="w-full" />
+                                    <Progress value={isRendering ? renderProgress : generationProgress} className="w-full" />
                                     <p className="text-xs text-green-400 mt-2">現在のコスト: {formatCostJPY(currentCost)}</p>
                                 </div>
                             ) : (
@@ -1475,6 +2194,37 @@ export default function Home() {
                     </div>
                 )}
             </div>
+
+            {/* Avatar Manager Modal */}
+            {showAvatarManager && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-slate-700">
+                        <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-700 p-4 flex items-center justify-between">
+                            <h2 className="text-xl font-bold text-white">アバター管理</h2>
+                            <button
+                                onClick={() => setShowAvatarManager(false)}
+                                className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+                            >
+                                <X className="w-5 h-5 text-slate-400" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <AvatarManager
+                                onSelectAvatar={(avatar) => {
+                                    setCustomAvatar(avatar);
+                                    setShowAvatarManager(false);
+                                }}
+                                selectedAvatarId={customAvatar?.id}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Lip Sync Tester Modal */}
+            {showLipSyncTester && (
+                <LipSyncTester onClose={() => setShowLipSyncTester(false)} />
+            )}
         </main>
     );
 }
