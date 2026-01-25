@@ -46,7 +46,7 @@ export function VideoPreview({
     setDuration(totalSeconds + openingDuration + endingDuration - overlapSeconds);
   }, [videoProps]);
 
-  const totalFrames = duration * fps;
+  const totalFrames = Math.round(duration * fps);
   const currentTime = currentFrame / fps;
 
   // Handle frame change
