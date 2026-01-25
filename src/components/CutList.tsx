@@ -26,7 +26,7 @@ import {
   formatTime,
 } from "@/lib/video-presets";
 
-// 話者オプション
+// 話者オプション（対話モード用のspeaker1/speaker2を含む）
 const SPEAKER_OPTIONS: { value: SpeakerType; label: string; icon: string; color: string }[] = [
   { value: "narrator", label: "ナレーター", icon: "🎙️", color: "text-green-400" },
   { value: "host", label: "ホスト", icon: "👤", color: "text-blue-400" },
@@ -35,6 +35,9 @@ const SPEAKER_OPTIONS: { value: SpeakerType; label: string; icon: string; color:
   { value: "expert", label: "専門家", icon: "🎓", color: "text-purple-400" },
   { value: "interviewer", label: "質問者", icon: "🎤", color: "text-cyan-400" },
   { value: "interviewee", label: "回答者", icon: "💭", color: "text-pink-400" },
+  // 対話モード用
+  { value: "speaker1", label: "話者1（メイン）", icon: "1️⃣", color: "text-green-400" },
+  { value: "speaker2", label: "話者2（サブ）", icon: "2️⃣", color: "text-orange-400" },
 ];
 import { Image, Type, Mic, FileText, Plus, Trash2, FolderOpen, ChevronDown, ChevronRight, Play, Pause, Eye, X, RefreshCw, BookOpen, Square, Circle, Star, ArrowRight, Sparkles, Shapes, Loader2, Wand2 } from "lucide-react";
 import { ImageGalleryModal } from "./ImageGalleryModal";
@@ -447,28 +450,26 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek,
 
         {/* コンテンツ有無 & 生成状況インジケーター */}
         <div className="flex items-center gap-1.5 text-xs">
-          {/* 話者インジケーター（narrator以外の時のみ表示） */}
-          {cut.speaker && cut.speaker !== "narrator" && (
-            <span
-              className={`px-1 py-0.5 rounded ${
-                SPEAKER_OPTIONS.find(o => o.value === cut.speaker)?.color || "text-gray-400"
-              } bg-gray-700/50`}
-              title={SPEAKER_OPTIONS.find(o => o.value === cut.speaker)?.label}
-            >
-              {SPEAKER_OPTIONS.find(o => o.value === cut.speaker)?.icon}
-            </span>
-          )}
-          {/* ボイスインジケーター（Zephyr以外の時のみ表示） */}
-          {cut.voiceId && cut.voiceId !== "Zephyr" && (
-            <span
-              className={`px-1 py-0.5 rounded text-[10px] font-medium ${
-                GEMINI_VOICE_OPTIONS.find(v => v.value === cut.voiceId)?.color || "text-gray-400"
-              } bg-gray-700/50`}
-              title={GEMINI_VOICE_OPTIONS.find(v => v.value === cut.voiceId)?.label}
-            >
-              {cut.voiceId.slice(0, 2)}
-            </span>
-          )}
+          {/* 話者＋ボイスインジケーター（常に表示、男女がわかるように） */}
+          {(() => {
+            const speaker = cut.speaker || "narrator";
+            const speakerInfo = SPEAKER_OPTIONS.find(o => o.value === speaker);
+            const voiceInfo = GEMINI_VOICE_OPTIONS.find(v => v.value === (cut.voiceId || "Zephyr"));
+            const isMale = voiceInfo?.gender === "male";
+            const genderSymbol = isMale ? "♂" : "♀";
+            const genderBg = isMale ? "bg-blue-500/30 border-blue-500/50" : "bg-pink-500/30 border-pink-500/50";
+            const genderText = isMale ? "text-blue-300" : "text-pink-300";
+
+            return (
+              <span
+                className={`px-1.5 py-0.5 rounded border ${genderBg} ${genderText} flex items-center gap-1`}
+                title={`${speakerInfo?.label || speaker} / ${voiceInfo?.label || "不明"}`}
+              >
+                <span className="text-sm">{genderSymbol}</span>
+                <span className="text-[10px] font-medium">{(cut.voiceId || "Ze").slice(0, 2)}</span>
+              </span>
+            );
+          })()}
           {/* 画像: プロンプトあり/生成済み */}
           <span
             className={`flex items-center gap-0.5 px-1 py-0.5 rounded ${
