@@ -864,7 +864,7 @@ export default function Home() {
                     setRenderProgress(100);
 
                     // レンダリングコスト記録（ローカル処理のため無料）
-                    await saveCost(user.id, 0, "render", `Auto render: ${finalConfig.title}`);
+                    await saveCost(user.id, null, { service: "render" });
                     await loadCosts();
                 }
             } catch (renderError) {
@@ -1214,9 +1214,8 @@ export default function Home() {
                 setRenderedVideoUrl(renderRes.data.videoUrl);
                 setRenderProgress(100);
 
-                // コスト記録
-                const renderCost = 0; // レンダリング自体は無料（ローカル処理）
-                await saveCost(user.id, renderCost, "render", `Render: ${videoConfig.title}`);
+                // コスト記録（レンダリング自体は無料、ローカル処理）
+                await saveCost(user.id, null, { service: "render" });
                 await loadCosts();
 
                 alert("MP4レンダリングが完了しました！");

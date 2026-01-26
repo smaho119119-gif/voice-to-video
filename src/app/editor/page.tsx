@@ -583,7 +583,7 @@ export default function EditorPage() {
       lines: scene.main_text.lines || [],
     } : undefined;
 
-    const images = (scene.image_prompts || [scene.image_prompt]).filter(Boolean).map((prompt: string, i: number) => ({
+    const images = (scene.image_prompts || [scene.image_prompt || scene.imagePrompt]).filter(Boolean).map((prompt: string, i: number) => ({
       id: `img-migrated-${index}-${i}`,
       source: "generated" as const,
       prompt,
@@ -595,18 +595,18 @@ export default function EditorPage() {
       endTime: sceneDuration,
       mainText,
       subtitle: scene.subtitle || "",
-      voiceText: scene.voice_text || scene.avatar_script || scene.narration || "",
-      voiceStyle: scene.voice_style || "",
+      voiceText: scene.voice_text || scene.voiceText || scene.avatar_script || scene.narration || "",
+      voiceStyle: scene.voice_style || scene.voiceStyle || "",
       speaker: scene.speaker || "narrator",
-      voiceId: scene.voice_id || "",
+      voiceId: scene.voice_id || scene.voiceId || "",
       images: images.length > 0 ? images : [],
-      imagePrompt: scene.image_prompts?.[0] || scene.image_prompt || "",
-      imageUrl: scene.imageUrl || "",
-      imageUrl16x9: scene.imageUrl16x9 || "",  // PC用画像を復元
-      imageUrl9x16: scene.imageUrl9x16 || "",  // スマホ用画像を復元
-      voiceUrl: scene.audioUrl || "",
-      imageEffect: imageEffectMap[scene.image_effect] || "zoomIn",
-      textAnimation: textAnimationMap[scene.text_animation] || "typewriter",
+      imagePrompt: scene.image_prompts?.[0] || scene.image_prompt || scene.imagePrompt || "",
+      imageUrl: scene.imageUrl || scene.image_url || "",
+      imageUrl16x9: scene.imageUrl16x9 || scene.image_url_16x9 || "",
+      imageUrl9x16: scene.imageUrl9x16 || scene.image_url_9x16 || "",
+      voiceUrl: scene.audioUrl || scene.audio_url || "",
+      imageEffect: imageEffectMap[scene.image_effect || scene.imageEffect] || "zoomIn",
+      textAnimation: textAnimationMap[scene.text_animation || scene.textAnimation] || "typewriter",
       transition: transitionMap[scene.transition] || "fade",
     };
   }, []);
@@ -1104,9 +1104,16 @@ export default function EditorPage() {
   // Generate audio for all scenes using batch API with timesheet
   // タイムシート方式：全音声を一括生成→実際の尺でタイムシート作成→ギャップなし
   const handleGenerateAudio = async () => {
+    console.log("[Editor] handleGenerateAudio called");
+    console.log("[Editor] Total cuts:", styleConfig.cuts.length);
+    console.log("[Editor] Cuts with voiceText:", styleConfig.cuts.filter(c => c.voiceText?.trim()).length);
+    console.log("[Editor] Cuts with voiceUrl:", styleConfig.cuts.filter(c => c.voiceUrl).length);
+
     const cutsNeedingAudio = styleConfig.cuts.filter(cut =>
       cut.voiceText && cut.voiceText.trim() && !cut.voiceUrl
     );
+    console.log("[Editor] Cuts needing audio:", cutsNeedingAudio.length);
+
     if (cutsNeedingAudio.length === 0) {
       showToast("音声が必要なシーンがありません（全て生成済みまたはテキストなし）", "info");
       return;

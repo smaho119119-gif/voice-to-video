@@ -32,6 +32,12 @@ interface TimesheetEntry {
     text: string;
 }
 
+// 内部処理用（Supabaseアップロード用のデータを含む）
+interface InternalTimesheetEntry extends TimesheetEntry {
+    base64?: string;
+    format?: string;
+}
+
 interface TimesheetResult {
     success: boolean;
     timesheet: TimesheetEntry[];
@@ -54,8 +60,8 @@ async function getAudioDuration(filePath: string): Promise<number> {
 }
 
 // Save audio locally and return URL + duration
-// Also uploads to Supabase for persistence
-async function saveAudioLocally(base64Audio: string, format: string = "mp3", userId: string = "batch"): Promise<{ url: string; duration: number; filePath: string }> {
+// Supabaseへのアップロードは後で別途行う（ブロッキングしない）
+async function saveAudioLocally(base64Audio: string, format: string = "mp3"): Promise<{ url: string; duration: number; filePath: string; base64: string }> {
     const audioDir = path.join(process.cwd(), "public", "audio-cache");
     await mkdir(audioDir, { recursive: true });
 
@@ -67,11 +73,8 @@ async function saveAudioLocally(base64Audio: string, format: string = "mp3", use
 
     const duration = await getAudioDuration(filePath);
 
-    // Try to upload to Supabase for persistence
-    const supabaseUrl = await uploadAudioToStorage(base64Audio, userId, format);
-    const finalUrl = supabaseUrl || `/audio-cache/${fileName}`;
-
-    return { url: finalUrl, duration, filePath };
+    // ローカルURLを返す（Supabaseアップロードはブロッキングしない）
+    return { url: `/audio-cache/${fileName}`, duration, filePath, base64: base64Audio };
 }
 
 // Convert PCM to WAV format
@@ -173,24 +176,34 @@ ${text}`;
 }
 
 export async function POST(req: NextRequest) {
+    console.log("[Batch Audio] API called");
+
     if (!process.env.GEMINI_API_KEY) {
+        console.error("[Batch Audio] GEMINI_API_KEY is missing!");
         return NextResponse.json({ error: "Gemini API Key is missing" }, { status: 500 });
     }
 
     try {
+        const body = await req.json();
+        console.log("[Batch Audio] Received body keys:", Object.keys(body));
+
         const { scenes, voiceConfig, customDictionary }: {
             scenes: SceneInput[];
             voiceConfig: VoiceConfig;
             customDictionary?: any[];
-        } = await req.json();
+        } = body;
+
+        console.log("[Batch Audio] Scenes count:", scenes?.length);
+        console.log("[Batch Audio] Voice config:", JSON.stringify(voiceConfig));
 
         if (!scenes || scenes.length === 0) {
+            console.error("[Batch Audio] No scenes provided!");
             return NextResponse.json({ error: "No scenes provided" }, { status: 400 });
         }
 
         console.log(`[Batch Audio] Starting batch generation for ${scenes.length} scenes`);
 
-        const timesheet: TimesheetEntry[] = [];
+        const timesheet: InternalTimesheetEntry[] = [];
         let currentTime = 0;
 
         // Generate audio for each scene sequentially to build accurate timesheet
@@ -228,17 +241,19 @@ export async function POST(req: NextRequest) {
                     throw new Error("No audio generated");
                 }
 
-                // Save audio and get duration
-                const { url, duration } = await saveAudioLocally(audioResult.base64, audioResult.format);
+                // Save audio locally and get duration（ローカル保存のみ、ブロッキングなし）
+                const { url, duration, base64 } = await saveAudioLocally(audioResult.base64, audioResult.format);
 
                 // Add to timesheet with exact timing
-                const entry: TimesheetEntry = {
+                const entry: InternalTimesheetEntry = {
                     id: scene.id,
                     startTime: currentTime,
                     endTime: currentTime + duration,
                     duration: duration,
                     audioUrl: url,
-                    text: scene.text
+                    text: scene.text,
+                    base64: base64,  // 後でSupabaseアップロード用
+                    format: audioResult.format
                 };
 
                 timesheet.push(entry);
@@ -250,25 +265,46 @@ export async function POST(req: NextRequest) {
                 console.error(`[Batch Audio] Failed to generate scene ${i + 1}:`, error);
                 // Add placeholder entry with estimated duration
                 const estimatedDuration = Math.ceil(scene.text.length / 10); // ~10 chars per second
-                timesheet.push({
+                const errorEntry: InternalTimesheetEntry = {
                     id: scene.id,
                     startTime: currentTime,
                     endTime: currentTime + estimatedDuration,
                     duration: estimatedDuration,
                     audioUrl: "",
                     text: scene.text
-                });
+                };
+                timesheet.push(errorEntry);
                 currentTime += estimatedDuration;
             }
         }
 
+        // レスポンス用のタイムシート（base64を除去）
+        const cleanTimesheet = timesheet.map(({ base64, format, ...rest }) => rest);
+
         const result: TimesheetResult = {
             success: true,
-            timesheet,
+            timesheet: cleanTimesheet,
             totalDuration: currentTime
         };
 
         console.log(`[Batch Audio] Complete! Total duration: ${currentTime.toFixed(2)}s`);
+
+        // バックグラウンドでSupabaseにアップロード（レスポンスをブロックしない）
+        // Note: これはベストエフォート。失敗してもローカルファイルは使える
+        Promise.all(
+            timesheet
+                .filter(entry => entry.base64 && entry.audioUrl)
+                .map(async (entry) => {
+                    try {
+                        const supabaseUrl = await uploadAudioToStorage(entry.base64!, "batch", entry.format || "wav");
+                        if (supabaseUrl) {
+                            console.log(`[Batch Audio] Uploaded to Supabase: scene ${entry.id}`);
+                        }
+                    } catch (err) {
+                        console.warn(`[Batch Audio] Supabase upload failed for scene ${entry.id}:`, err);
+                    }
+                })
+        ).catch(err => console.warn("[Batch Audio] Background upload error:", err));
 
         return NextResponse.json(result);
 
