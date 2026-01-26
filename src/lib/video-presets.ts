@@ -316,6 +316,47 @@ export function createDefaultAsset(type: AssetType): SceneAsset {
   }
 }
 
+// シーンタイプ（RemotionのSceneTypeと対応）
+export type SceneType = "normal" | "text" | "quiz" | "problem";
+
+// クイズテーマ
+export type QuizTheme = "problem" | "benefit" | "compare" | "quiz";
+
+// 問題シーンバリアント
+export type ProblemVariant = "dramatic" | "list";
+
+// クイズ選択肢
+export interface QuizChoice {
+  text: string;
+  icon?: string; // emoji or icon
+}
+
+// テキスト表示モード
+export type TextDisplayMode = "instant" | "sync-typewriter" | "word-bounce";
+
+// テキスト表示モードオプション（UI用）
+export const TEXT_DISPLAY_MODE_OPTIONS: { value: TextDisplayMode; label: string; icon: string; description: string }[] = [
+  { value: "word-bounce", label: "バウンス", icon: "🎯", description: "単語ごとにバウンス表示" },
+  { value: "sync-typewriter", label: "タイプライター", icon: "⌨️", description: "音声に同期して1文字ずつ" },
+  { value: "instant", label: "即時表示", icon: "⚡", description: "最初から全文表示" },
+];
+
+// シーンタイプオプション（UI用）
+export const SCENE_TYPE_OPTIONS: { value: SceneType; label: string; icon: string; description: string }[] = [
+  { value: "normal", label: "通常", icon: "🖼️", description: "画像+テキストの通常シーン" },
+  { value: "text", label: "テキストのみ", icon: "📝", description: "画像なし、テキストアニメーション" },
+  { value: "quiz", label: "クイズ形式", icon: "❓", description: "質問と選択肢が順に出現" },
+  { value: "problem", label: "問題提起", icon: "😰", description: "問題リストを順番に表示" },
+];
+
+// クイズテーマオプション（UI用）
+export const QUIZ_THEME_OPTIONS: { value: QuizTheme; label: string; icon: string; color: string }[] = [
+  { value: "problem", label: "問題", icon: "😰", color: "text-red-400" },
+  { value: "benefit", label: "メリット", icon: "✨", color: "text-green-400" },
+  { value: "compare", label: "比較", icon: "🤔", color: "text-purple-400" },
+  { value: "quiz", label: "クイズ", icon: "❓", color: "text-blue-400" },
+];
+
 // 1カットの設定
 export interface CutConfig {
   id: number;
@@ -325,8 +366,25 @@ export interface CutConfig {
   textAnimation: TextAnimation;
   transition: SceneTransition;
 
+  // ★ シーンタイプ（normal: 画像あり, text: テキストのみ, quiz: クイズ形式, problem: 問題提起）
+  sceneType?: SceneType;
+
+  // ★ クイズシーン用プロパティ
+  quizQuestion?: string;           // クイズの質問
+  quizChoices?: QuizChoice[];      // 選択肢（A, B, C...）
+  quizTheme?: QuizTheme;           // テーマ（problem/benefit/compare/quiz）
+  quizHighlightIndex?: number;     // 正解のインデックス（最後にハイライト）
+
+  // ★ 問題シーン用プロパティ
+  problemHeadline?: string;        // 見出し
+  problemItems?: string[];         // 問題項目リスト
+  problemVariant?: ProblemVariant; // スタイル
+
   // ① メインテキスト（動く文字、タイトル、クイズ等）
   mainText?: MainTextConfig;
+
+  // ★ テキスト表示モード（sync-typewriter: 音声同期タイプライター）
+  textDisplayMode?: TextDisplayMode;
 
   // ② テロップ/字幕（画面下部の字幕）
   subtitle?: string;

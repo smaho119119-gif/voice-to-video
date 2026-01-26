@@ -14,6 +14,10 @@ import {
   AssetType,
   AssetAnimation,
   ShapeType,
+  SceneType,
+  QuizTheme,
+  QuizChoice,
+  TextDisplayMode,
   IMAGE_EFFECT_OPTIONS,
   TRANSITION_OPTIONS,
   TEXT_ANIMATION_OPTIONS,
@@ -22,6 +26,9 @@ import {
   SHAPE_OPTIONS,
   ICON_PRESETS,
   LOTTIE_PRESETS,
+  SCENE_TYPE_OPTIONS,
+  QUIZ_THEME_OPTIONS,
+  TEXT_DISPLAY_MODE_OPTIONS,
   createDefaultAsset,
   formatTime,
 } from "@/lib/video-presets";
@@ -39,8 +46,23 @@ const SPEAKER_OPTIONS: { value: SpeakerType; label: string; icon: string; color:
   { value: "speaker1", label: "話者1（メイン）", icon: "1️⃣", color: "text-green-400" },
   { value: "speaker2", label: "話者2（サブ）", icon: "2️⃣", color: "text-orange-400" },
 ];
+
+// AivisSpeech Voice Options（ローカル・完全無料）
+const AIVIS_VOICE_OPTIONS = [
+  // 女性ボイス
+  { value: "888753760", label: "まお - ノーマル", short: "まお", gender: "female" as const, color: "text-green-400", styleId: 888753760, icon: "https://assets.aivis-project.com/aivm-models/fd0d9420-7eee-40de-826d-7fe16b562e84/speakers/f6c7343c-a7fd-4d42-b0dc-38fe18c6ab7f/icon.jpg" },
+  { value: "888753762", label: "まお - あまあま", short: "甘", gender: "female" as const, color: "text-pink-400", styleId: 888753762, icon: "https://assets.aivis-project.com/aivm-models/fd0d9420-7eee-40de-826d-7fe16b562e84/speakers/f6c7343c-a7fd-4d42-b0dc-38fe18c6ab7f/icon.jpg" },
+  { value: "1388823424", label: "凛音エル - ノーマル", short: "エル", gender: "female" as const, color: "text-purple-400", styleId: 1388823424, icon: "https://assets.aivis-project.com/aivm-models/9fc6e37f-b8d4-4df5-93e3-30defd0f00ff/speakers/6b0a0fb6-283c-4b7e-928d-37fda7a639bb/icon.jpg" },
+  { value: "345585728", label: "るな - ノーマル", short: "るな", gender: "female" as const, color: "text-cyan-400", styleId: 345585728, icon: "https://assets.aivis-project.com/aivm-models/47d21b9f-7543-4574-b16e-0863646b5bbf/speakers/4ed4bd8e-fb79-4c38-999a-3b6f283397a7/icon.jpg" },
+  // 男性ボイス
+  { value: "1310138976", label: "阿井田茂 - ノーマル", short: "茂", gender: "male" as const, color: "text-blue-400", styleId: 1310138976, icon: "https://assets.aivis-project.com/aivm-models/d799f1c0-59f3-4b6b-9a65-56715776fc69/speakers/50880d3a-d63e-4a31-ae3f-ab14e0c0b3cb/icon.jpg" },
+  { value: "1310138977", label: "阿井田茂 - Calm", short: "穏", gender: "male" as const, color: "text-teal-400", styleId: 1310138977, icon: "https://assets.aivis-project.com/aivm-models/d799f1c0-59f3-4b6b-9a65-56715776fc69/speakers/50880d3a-d63e-4a31-ae3f-ab14e0c0b3cb/icon.jpg" },
+  { value: "1618811328", label: "黄金笑 - ノーマル", short: "笑", gender: "male" as const, color: "text-yellow-400", styleId: 1618811328, icon: null },
+];
 import { Image, Type, Mic, FileText, Plus, Trash2, FolderOpen, ChevronDown, ChevronRight, Play, Pause, Eye, X, RefreshCw, BookOpen, Square, Circle, Star, ArrowRight, Sparkles, Shapes, Loader2, Wand2 } from "lucide-react";
 import { ImageGalleryModal } from "./ImageGalleryModal";
+
+type TTSProvider = "google" | "elevenlabs" | "gemini" | "aivis";
 
 interface CutListProps {
   cuts: CutConfig[];
@@ -53,9 +75,13 @@ interface CutListProps {
   regeneratingCutId?: number | null;
   onGenerateImage?: (cutId: number) => void;
   generatingImageCutId?: number | null;
+  onPreviewCut?: (cutId: number) => void;  // 1カットプレビュー
   // バッチ音声生成用のボイス設定
   mainVoiceId?: string;      // メイン話者のボイスID
   secondaryVoiceId?: string; // セカンダリ話者のボイスID
+  ttsProvider?: TTSProvider; // TTSプロバイダー
+  mainVoiceName?: string;    // メイン話者の名前（表示用）
+  secondaryVoiceName?: string; // サブ話者の名前（表示用）
 }
 
 export function CutList({
@@ -69,8 +95,12 @@ export function CutList({
   regeneratingCutId,
   onGenerateImage,
   generatingImageCutId,
+  onPreviewCut,
   mainVoiceId = "Zephyr",
   secondaryVoiceId = "Puck",
+  ttsProvider = "gemini",
+  mainVoiceName,
+  secondaryVoiceName,
 }: CutListProps) {
   const [bulkEditMode, setBulkEditMode] = useState(false);
   const [expandedCuts, setExpandedCuts] = useState<Set<number>>(new Set());
@@ -167,8 +197,12 @@ export function CutList({
             isRegenerating={regeneratingCutId === cut.id}
             onGenerateImage={() => onGenerateImage?.(cut.id)}
             isGeneratingImage={generatingImageCutId === cut.id}
+            onPreviewCut={() => onPreviewCut?.(cut.id)}
             mainVoiceId={mainVoiceId}
             secondaryVoiceId={secondaryVoiceId}
+            ttsProvider={ttsProvider}
+            mainVoiceName={mainVoiceName}
+            secondaryVoiceName={secondaryVoiceName}
           />
         ))}
       </div>
@@ -189,8 +223,12 @@ interface CutItemProps {
   isRegenerating?: boolean;
   onGenerateImage?: () => void;
   isGeneratingImage?: boolean;
+  onPreviewCut?: () => void;  // 1カットプレビュー
   mainVoiceId: string;
   secondaryVoiceId: string;
+  ttsProvider: TTSProvider;
+  mainVoiceName?: string;
+  secondaryVoiceName?: string;
 }
 
 // メインテキストタイプのオプション
@@ -201,7 +239,7 @@ const MAIN_TEXT_TYPE_OPTIONS: { value: MainTextType; label: string; icon: string
   { value: "highlight", label: "強調", icon: "⭐" },
 ];
 
-function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek, onRegenerateAudio, onOpenDictionary, isRegenerating, onGenerateImage, isGeneratingImage, mainVoiceId, secondaryVoiceId }: CutItemProps) {
+function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek, onRegenerateAudio, onOpenDictionary, isRegenerating, onGenerateImage, isGeneratingImage, onPreviewCut, mainVoiceId, secondaryVoiceId, ttsProvider, mainVoiceName, secondaryVoiceName }: CutItemProps) {
   const [showGallery, setShowGallery] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [showImagePreview, setShowImagePreview] = useState(false);
@@ -403,11 +441,23 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek,
           onClick={onSeek}
           className="flex items-center gap-2 text-xs hover:text-blue-400 transition-colors"
         >
-          <span className="text-gray-500 font-mono">#{cut.id.toString().padStart(2, "0")}</span>
+          <span className="text-gray-500 font-mono">#{cut.id.toString().padStart(2, "00")}</span>
           <span className="text-gray-400">
             [{formatTime(cut.startTime)}-{formatTime(cut.endTime)}]
           </span>
         </button>
+
+        {/* 1カットプレビューボタン */}
+        {onPreviewCut && (
+          <button
+            onClick={onPreviewCut}
+            className="px-2 py-0.5 text-xs bg-purple-600/30 text-purple-300 rounded hover:bg-purple-600/50 transition-colors flex items-center gap-1"
+            title="このカットだけプレビュー"
+          >
+            <Play className="w-3 h-3" />
+            <span>プレビュー</span>
+          </button>
+        )}
 
         {/* エフェクトボタン（直接クリック可能） */}
         <div className="flex-1 flex items-center gap-1">
@@ -467,8 +517,24 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek,
             const isSecondaryVoice = ["speaker2", "guest", "customer"].includes(speaker);
             // カット個別のvoiceIdがあればそれを優先、なければspeakerに基づいてメイン/セカンダリを使用
             const effectiveVoiceId = cut.voiceId || (isSecondaryVoice ? secondaryVoiceId : mainVoiceId);
-            const voiceInfo = GEMINI_VOICE_OPTIONS.find(v => v.value === effectiveVoiceId);
-            const isMale = voiceInfo?.gender === "male";
+
+            // プロバイダーに応じて話者名を取得
+            let voiceName: string;
+            let isMale: boolean;
+
+            if (ttsProvider === "aivis") {
+              // AivisSpeechの場合、渡された話者名を使用
+              voiceName = isSecondaryVoice ? (secondaryVoiceName || "阿井田茂") : (mainVoiceName || "まお");
+              // AivisSpeechの男性声ID（阿井田茂、黄金笑）
+              const maleStyleIds = ["1310138976", "1310138977", "1310138978", "1310138979", "1310138980", "1310138981", "1310138982", "1618811328", "1618811329", "1618811330"];
+              isMale = maleStyleIds.includes(effectiveVoiceId);
+            } else {
+              // Gemini/Google/ElevenLabsの場合
+              const voiceInfo = GEMINI_VOICE_OPTIONS.find(v => v.value === effectiveVoiceId);
+              voiceName = voiceInfo?.label || effectiveVoiceId;
+              isMale = voiceInfo?.gender === "male";
+            }
+
             const genderSymbol = isMale ? "♂" : "♀";
             const genderBg = isMale ? "bg-blue-500/30 border-blue-500/50" : "bg-pink-500/30 border-pink-500/50";
             const genderText = isMale ? "text-blue-300" : "text-pink-300";
@@ -476,10 +542,10 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek,
             return (
               <span
                 className={`px-1.5 py-0.5 rounded border ${genderBg} ${genderText} flex items-center gap-1`}
-                title={`${speakerInfo?.label || speaker} / ${voiceInfo?.label || effectiveVoiceId}`}
+                title={`${speakerInfo?.label || speaker} / ${voiceName}`}
               >
                 <span className="text-sm">{genderSymbol}</span>
-                <span className="text-[10px] font-medium">{effectiveVoiceId.slice(0, 2)}</span>
+                <span className="text-[10px] font-medium">{voiceName.slice(0, 4)}</span>
               </span>
             );
           })()}
@@ -515,8 +581,156 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek,
       {/* 展開時のコンテンツ */}
       {isExpanded && (
         <div className="px-3 pb-3 space-y-3 border-t border-gray-700/50">
+          {/* シーンタイプ選択 */}
+          <div className="pt-3 flex items-center gap-2">
+            <span className="text-xs text-gray-400">シーンタイプ:</span>
+            <div className="flex gap-1">
+              {SCENE_TYPE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => onUpdate({ sceneType: option.value })}
+                  className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                    (cut.sceneType || "normal") === option.value
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-700/50 text-gray-400 hover:bg-gray-600"
+                  }`}
+                  title={option.description}
+                >
+                  <span>{option.icon}</span>
+                  <span>{option.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* テキスト表示モード選択 */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">テキスト表示:</span>
+            <div className="flex gap-1">
+              {TEXT_DISPLAY_MODE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => onUpdate({ textDisplayMode: option.value })}
+                  className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                    (cut.textDisplayMode || "word-bounce") === option.value
+                      ? "bg-purple-600 text-white"
+                      : "bg-gray-700/50 text-gray-400 hover:bg-gray-600"
+                  }`}
+                  title={option.description}
+                >
+                  <span>{option.icon}</span>
+                  <span>{option.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* クイズシーン設定 */}
+          {cut.sceneType === "quiz" && (
+            <div className="bg-blue-900/20 border border-blue-700/30 rounded-lg p-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-blue-400 text-xs font-medium">❓ クイズ設定</span>
+                <div className="flex gap-1 ml-auto">
+                  {QUIZ_THEME_OPTIONS.map((theme) => (
+                    <button
+                      key={theme.value}
+                      onClick={() => onUpdate({ quizTheme: theme.value })}
+                      className={`px-1.5 py-0.5 text-xs rounded ${
+                        (cut.quizTheme || "quiz") === theme.value
+                          ? `bg-${theme.color.replace("text-", "").replace("-400", "-600")} text-white`
+                          : `bg-gray-700 ${theme.color} hover:bg-gray-600`
+                      }`}
+                      title={theme.label}
+                    >
+                      {theme.icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <input
+                type="text"
+                value={cut.quizQuestion || ""}
+                onChange={(e) => onUpdate({ quizQuestion: e.target.value })}
+                placeholder="質問文を入力..."
+                className="w-full px-2 py-1.5 text-sm bg-gray-900 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-gray-500">選択肢（改行で区切り）</span>
+                  <span className="text-[10px] text-gray-500">正解: {(cut.quizHighlightIndex ?? -1) + 1 || "なし"}</span>
+                </div>
+                <textarea
+                  value={(cut.quizChoices || []).map(c => c.text).join("\n")}
+                  onChange={(e) => {
+                    const lines = e.target.value.split("\n").filter(l => l.trim());
+                    onUpdate({
+                      quizChoices: lines.map(text => ({ text }))
+                    });
+                  }}
+                  placeholder="選択肢A&#10;選択肢B&#10;選択肢C"
+                  rows={3}
+                  className="w-full px-2 py-1.5 text-sm bg-gray-900 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                />
+                <div className="flex gap-1 flex-wrap">
+                  {(cut.quizChoices || []).map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => onUpdate({ quizHighlightIndex: cut.quizHighlightIndex === idx ? undefined : idx })}
+                      className={`px-2 py-0.5 text-xs rounded ${
+                        cut.quizHighlightIndex === idx
+                          ? "bg-green-600 text-white"
+                          : "bg-gray-700 text-gray-400 hover:bg-gray-600"
+                      }`}
+                    >
+                      {String.fromCharCode(65 + idx)}が正解
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 問題提起シーン設定 */}
+          {cut.sceneType === "problem" && (
+            <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-red-400 text-xs font-medium">😰 問題提起設定</span>
+              </div>
+              <input
+                type="text"
+                value={cut.problemHeadline || ""}
+                onChange={(e) => onUpdate({ problemHeadline: e.target.value })}
+                placeholder="見出し（例：こんな悩みありませんか？）"
+                className="w-full px-2 py-1.5 text-sm bg-gray-900 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-red-500"
+              />
+              <div>
+                <span className="text-[10px] text-gray-500 mb-1 block">問題リスト（改行で区切り）</span>
+                <textarea
+                  value={(cut.problemItems || []).join("\n")}
+                  onChange={(e) => {
+                    const lines = e.target.value.split("\n").filter(l => l.trim());
+                    onUpdate({ problemItems: lines });
+                  }}
+                  placeholder="時間がない&#10;難しすぎる&#10;続かない"
+                  rows={3}
+                  className="w-full px-2 py-1.5 text-sm bg-gray-900 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-red-500 resize-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* テキストのみシーン説明 */}
+          {cut.sceneType === "text" && (
+            <div className="bg-purple-900/20 border border-purple-700/30 rounded-lg p-3">
+              <p className="text-purple-400 text-xs">
+                📝 テキストのみシーン: 画像なしで、字幕テキストが単語ごとにアニメーション表示されます。
+                下の「字幕/テロップ」に表示したいテキストを入力してください。
+              </p>
+            </div>
+          )}
+
           {/* コンテンツグリッド */}
-          <div className="grid grid-cols-2 gap-3 pt-3">
+          <div className="grid grid-cols-2 gap-3">
             {/* 左カラム: テキスト類 */}
             <div className="space-y-2">
               {/* メインテキスト */}
@@ -649,64 +863,112 @@ function CutItem({ cut, isPlaying, isExpanded, onToggleExpand, onUpdate, onSeek,
                     {SPEAKER_OPTIONS.find(o => o.value === (cut.speaker || "narrator"))?.label}
                   </span>
                 </div>
-                {/* ボイス選択（8種類） */}
+                {/* ボイス選択 - TTSプロバイダーに応じて表示を変更 */}
                 <div className="mt-2 flex items-center gap-2 flex-wrap">
                   <span className="text-[10px] text-gray-500">声:</span>
-                  <div className="flex gap-1">
-                    <span className="text-[9px] text-pink-400/50">♀</span>
-                    {GEMINI_VOICE_OPTIONS.filter(v => v.gender === "female").map((voice) => (
-                      <button
-                        key={voice.value}
-                        onClick={() => onUpdate({ voiceId: voice.value })}
-                        className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
-                          (cut.voiceId || "Zephyr") === voice.value
-                            ? `bg-gray-700 ${voice.color} ring-1 ring-current`
-                            : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
-                        }`}
-                        title={voice.label}
-                      >
-                        {voice.value.slice(0, 2)}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-1">
-                    <span className="text-[9px] text-blue-400/50">♂</span>
-                    {GEMINI_VOICE_OPTIONS.filter(v => v.gender === "male").map((voice) => (
-                      <button
-                        key={voice.value}
-                        onClick={() => onUpdate({ voiceId: voice.value })}
-                        className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
-                          (cut.voiceId || "Zephyr") === voice.value
-                            ? `bg-gray-700 ${voice.color} ring-1 ring-current`
-                            : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
-                        }`}
-                        title={voice.label}
-                      >
-                        {voice.value.slice(0, 2)}
-                      </button>
-                    ))}
-                  </div>
-                  <span className={`text-[10px] ${GEMINI_VOICE_OPTIONS.find(v => v.value === (cut.voiceId || "Zephyr"))?.color || "text-gray-400"}`}>
-                    {GEMINI_VOICE_OPTIONS.find(v => v.value === (cut.voiceId || "Zephyr"))?.label}
-                  </span>
+                  {ttsProvider === "aivis" ? (
+                    <>
+                      <div className="flex gap-1 items-center">
+                        <span className="text-[9px] text-pink-400/50">♀</span>
+                        {AIVIS_VOICE_OPTIONS.filter(v => v.gender === "female").map((voice) => (
+                          <button
+                            key={voice.value}
+                            onClick={() => onUpdate({ voiceId: voice.value })}
+                            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors flex items-center gap-1 ${
+                              cut.voiceId === voice.value
+                                ? `bg-gray-700 ${voice.color} ring-1 ring-current`
+                                : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
+                            }`}
+                            title={voice.label}
+                          >
+                            {voice.icon && <img src={voice.icon} alt="" className="w-3 h-3 rounded-full" />}
+                            {voice.short}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-1 items-center">
+                        <span className="text-[9px] text-blue-400/50">♂</span>
+                        {AIVIS_VOICE_OPTIONS.filter(v => v.gender === "male").map((voice) => (
+                          <button
+                            key={voice.value}
+                            onClick={() => onUpdate({ voiceId: voice.value })}
+                            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors flex items-center gap-1 ${
+                              cut.voiceId === voice.value
+                                ? `bg-gray-700 ${voice.color} ring-1 ring-current`
+                                : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
+                            }`}
+                            title={voice.label}
+                          >
+                            {voice.icon && <img src={voice.icon} alt="" className="w-3 h-3 rounded-full" />}
+                            {voice.short}
+                          </button>
+                        ))}
+                      </div>
+                      <span className={`text-[10px] ${AIVIS_VOICE_OPTIONS.find(v => v.value === cut.voiceId)?.color || "text-gray-400"}`}>
+                        {AIVIS_VOICE_OPTIONS.find(v => v.value === cut.voiceId)?.label || "話者設定で選択"}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex gap-1">
+                        <span className="text-[9px] text-pink-400/50">♀</span>
+                        {GEMINI_VOICE_OPTIONS.filter(v => v.gender === "female").map((voice) => (
+                          <button
+                            key={voice.value}
+                            onClick={() => onUpdate({ voiceId: voice.value })}
+                            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                              (cut.voiceId || "Zephyr") === voice.value
+                                ? `bg-gray-700 ${voice.color} ring-1 ring-current`
+                                : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
+                            }`}
+                            title={voice.label}
+                          >
+                            {voice.value.slice(0, 2)}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-1">
+                        <span className="text-[9px] text-blue-400/50">♂</span>
+                        {GEMINI_VOICE_OPTIONS.filter(v => v.gender === "male").map((voice) => (
+                          <button
+                            key={voice.value}
+                            onClick={() => onUpdate({ voiceId: voice.value })}
+                            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                              (cut.voiceId || "Zephyr") === voice.value
+                                ? `bg-gray-700 ${voice.color} ring-1 ring-current`
+                                : "bg-gray-800/50 text-gray-500 hover:text-gray-300"
+                            }`}
+                            title={voice.label}
+                          >
+                            {voice.value.slice(0, 2)}
+                          </button>
+                        ))}
+                      </div>
+                      <span className={`text-[10px] ${GEMINI_VOICE_OPTIONS.find(v => v.value === (cut.voiceId || "Zephyr"))?.color || "text-gray-400"}`}>
+                        {GEMINI_VOICE_OPTIONS.find(v => v.value === (cut.voiceId || "Zephyr"))?.label}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* 演技指導 (Voice Style) */}
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs">🎭</span>
-                  <span className="text-xs text-pink-400">演技指導</span>
-                  <span className="text-[10px] text-gray-500 ml-auto">Gemini 2.5 TTS用</span>
+              {/* 演技指導 (Voice Style) - Gemini TTS専用 */}
+              {ttsProvider === "gemini" && (
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs">🎭</span>
+                    <span className="text-xs text-pink-400">演技指導</span>
+                    <span className="text-[10px] text-gray-500 ml-auto">Gemini 2.5 TTS用</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={cut.voiceStyle || ""}
+                    onChange={(e) => onUpdate({ voiceStyle: e.target.value })}
+                    placeholder="例: 明るく元気に、ワクワクした気持ちで"
+                    className="w-full px-2 py-1.5 text-sm bg-gray-900 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={cut.voiceStyle || ""}
-                  onChange={(e) => onUpdate({ voiceStyle: e.target.value })}
-                  placeholder="例: 明るく元気に、ワクワクした気持ちで"
-                  className="w-full px-2 py-1.5 text-sm bg-gray-900 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                />
-              </div>
+              )}
             </div>
 
             {/* 右カラム: 画像 */}

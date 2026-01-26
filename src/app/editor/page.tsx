@@ -29,7 +29,14 @@ import { useToast } from "@/components/Toast";
 import { ReadingDictionaryModal } from "@/components/ReadingDictionaryModal";
 
 type InputMode = "theme" | "url" | "voice";
-type TTSProvider = "google" | "elevenlabs" | "gemini";
+type TTSProvider = "google" | "elevenlabs" | "gemini" | "aivis";
+type ImageModel = "pro" | "flash";
+
+// 画像生成モデルオプション
+const IMAGE_MODEL_OPTIONS = [
+  { id: "flash" as ImageModel, name: "Flash", description: "高速・文字なし向け", icon: "⚡" },
+  { id: "pro" as ImageModel, name: "Pro", description: "高品質・テキスト対応", icon: "🎨" },
+];
 
 // Voice options per provider
 const GOOGLE_VOICE_OPTIONS = [
@@ -57,6 +64,70 @@ const GEMINI_VOICE_OPTIONS = [
   { id: "Orus", name: "Orus", gender: "male", description: "知的な男性声" },
 ];
 
+// AivisSpeech Voice Options (ローカル・無料) - キャラクター別グループ
+const AIVIS_VOICE_GROUPS = [
+  {
+    name: "まお", gender: "female" as const,
+    icon: "https://assets.aivis-project.com/aivm-models/fd0d9420-7eee-40de-826d-7fe16b562e84/speakers/f6c7343c-a7fd-4d42-b0dc-38fe18c6ab7f/icon.jpg",
+    styles: [
+      { id: "888753760", description: "ノーマル", styleId: 888753760 },
+      { id: "888753761", description: "ふつー", styleId: 888753761 },
+      { id: "888753762", description: "あまあま", styleId: 888753762 },
+      { id: "888753763", description: "おちつき", styleId: 888753763 },
+      { id: "888753764", description: "からかい", styleId: 888753764 },
+      { id: "888753765", description: "せつなめ", styleId: 888753765 },
+    ]
+  },
+  {
+    name: "凛音エル", gender: "female" as const,
+    icon: "https://assets.aivis-project.com/aivm-models/9fc6e37f-b8d4-4df5-93e3-30defd0f00ff/speakers/6b0a0fb6-283c-4b7e-928d-37fda7a639bb/icon.jpg",
+    styles: [
+      { id: "1388823424", description: "ノーマル", styleId: 1388823424 },
+      { id: "1388823427", description: "Happy", styleId: 1388823427 },
+      { id: "1388823428", description: "Sad", styleId: 1388823428 },
+    ]
+  },
+  {
+    name: "るな", gender: "female" as const,
+    icon: "https://assets.aivis-project.com/aivm-models/47d21b9f-7543-4574-b16e-0863646b5bbf/speakers/4ed4bd8e-fb79-4c38-999a-3b6f283397a7/icon.jpg",
+    styles: [{ id: "345585728", description: "ノーマル", styleId: 345585728 }]
+  },
+  {
+    name: "花音", gender: "female" as const,
+    icon: null,
+    styles: [{ id: "1325133120", description: "ノーマル", styleId: 1325133120 }]
+  },
+  {
+    name: "阿井田茂", gender: "male" as const,
+    icon: "https://assets.aivis-project.com/aivm-models/d799f1c0-59f3-4b6b-9a65-56715776fc69/speakers/50880d3a-d63e-4a31-ae3f-ab14e0c0b3cb/icon.jpg",
+    styles: [
+      { id: "1310138976", description: "ノーマル", styleId: 1310138976 },
+      { id: "1310138977", description: "Calm", styleId: 1310138977 },
+      { id: "1310138979", description: "Heavy", styleId: 1310138979 },
+      { id: "1310138981", description: "Shout", styleId: 1310138981 },
+    ]
+  },
+  {
+    name: "黄金笑", gender: "male" as const,
+    icon: null,
+    styles: [
+      { id: "1618811328", description: "ノーマル", styleId: 1618811328 },
+      { id: "1618811330", description: "Positive", styleId: 1618811330 },
+    ]
+  },
+];
+
+// フラット配列（既存コードとの互換性用）
+const AIVIS_VOICE_OPTIONS = AIVIS_VOICE_GROUPS.flatMap(group =>
+  group.styles.map(style => ({
+    id: style.id,
+    name: group.name,
+    gender: group.gender,
+    description: style.description,
+    styleId: style.styleId,
+  }))
+);
+
 // Gemini TTS Models
 const GEMINI_TTS_MODELS = [
   { id: "gemini-2.5-flash-preview-tts", name: "Flash Preview", description: "バランス型（デフォルト）" },
@@ -70,6 +141,7 @@ function getVoiceOptionsForProvider(provider: TTSProvider) {
     case "google": return GOOGLE_VOICE_OPTIONS;
     case "elevenlabs": return ELEVENLABS_VOICE_OPTIONS;
     case "gemini": return GEMINI_VOICE_OPTIONS;
+    case "aivis": return AIVIS_VOICE_OPTIONS;
     default: return GOOGLE_VOICE_OPTIONS;
   }
 }
@@ -113,10 +185,15 @@ export default function EditorPage() {
   const [isGeneratingFromUrl, setIsGeneratingFromUrl] = useState(false);
 
   // TTS settings
-  const [ttsProvider, setTtsProvider] = useState<TTSProvider>("gemini");
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("Zephyr");  // メイン話者
-  const [secondaryVoiceId, setSecondaryVoiceId] = useState<string>("Puck");  // 第2話者（guest/customer等）
+  const [ttsProvider, setTtsProvider] = useState<TTSProvider>("google");  // Geminiクォータ超過時はgoogleに切り替え
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string>("ja-JP-Wavenet-A");  // メイン話者（Google: A=女性, D=男性）
+  const [secondaryVoiceId, setSecondaryVoiceId] = useState<string>("ja-JP-Wavenet-D");  // 第2話者（男性）
   const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>("gemini-2.5-flash-preview-tts");
+  // AivisSpeech用
+  const [aivisStyleId, setAivisStyleId] = useState<number>(888753762);  // メイン: まお - あまあま
+  const [aivisSecondaryStyleId, setAivisSecondaryStyleId] = useState<number>(1310138976);  // サブ: 阿井田茂 - ノーマル
+  const [expandedAivisGroup, setExpandedAivisGroup] = useState<string | null>("まお");  // メイン話者アコーディオン
+  const [expandedAivisSecondaryGroup, setExpandedAivisSecondaryGroup] = useState<string | null>("阿井田茂");  // 第2話者アコーディオン
 
   // Video settings
   const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("9:16");  // PC用 16:9, スマホ用 9:16
@@ -133,6 +210,7 @@ export default function EditorPage() {
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
   const [imageProgress, setImageProgress] = useState({ current: 0, total: 0 });
   const [currentGeneratingIndex, setCurrentGeneratingIndex] = useState<number | null>(null);
+  const [imageModel, setImageModel] = useState<ImageModel>("flash");  // flash=高速, pro=高品質・テキスト対応
 
   // Project loading
   const [showProjectList, setShowProjectList] = useState(false);
@@ -150,6 +228,9 @@ export default function EditorPage() {
 
   // Single image generation from CutList
   const [generatingSingleImageCutId, setGeneratingSingleImageCutId] = useState<number | null>(null);
+
+  // Single cut preview modal
+  const [previewCutId, setPreviewCutId] = useState<number | null>(null);
 
   // Marketing framework for ChatGPT script generation
   type MarketingFramework = "AIDMA" | "PASONA" | "QUEST" | "PAS" | "4P";
@@ -618,8 +699,22 @@ export default function EditorPage() {
     // Update title
     setVideoTitle(project.title || "読み込んだプロジェクト");
 
-    // Get scenes from project
-    const scenes = project.scenes || [];
+    // 一覧からはscenesが除外されているので、必要なら詳細を取得
+    let scenes = project.scenes || [];
+    if (scenes.length === 0 && user?.id) {
+      console.log("[Editor] Fetching full project data...");
+      try {
+        const res = await fetch(`/api/vg-projects?userId=${user.id}&projectId=${project.id}`);
+        const data = await res.json();
+        if (data.project?.scenes) {
+          scenes = data.project.scenes;
+          console.log(`[Editor] Loaded ${scenes.length} scenes from API`);
+        }
+      } catch (err) {
+        console.error("[Editor] Failed to fetch project details:", err);
+      }
+    }
+
     const totalDuration = project.total_duration || scenes.reduce((sum: number, s: any) => sum + (s.duration || 7), 0) || 60;
 
     if (scenes.length === 0) {
@@ -664,7 +759,7 @@ export default function EditorPage() {
 
     console.log(`[Editor] Loaded ${newCuts.length} scenes from project`);
     showToast(`プロジェクト「${project.title}」を読み込みました (${newCuts.length}シーン)`, "success");
-  }, [migrateSceneToCurrentFormat]);
+  }, [migrateSceneToCurrentFormat, user]);
 
   const startDragLeft = () => {
     isDraggingLeft.current = true;
@@ -1149,6 +1244,9 @@ export default function EditorPage() {
             voice: selectedVoiceId,
             secondaryVoice: secondaryVoiceId,
             model: ttsProvider === "gemini" ? selectedGeminiModel : undefined,
+            // AivisSpeech用
+            styleId: ttsProvider === "aivis" ? aivisStyleId : undefined,
+            secondaryStyleId: ttsProvider === "aivis" ? aivisSecondaryStyleId : undefined,
           },
           customDictionary,
         }),
@@ -1235,7 +1333,7 @@ export default function EditorPage() {
 
     const customDictionary = getCustomDictionary();
     // カット固有のvoiceIdがあればそれを使用、なければ話者タイプで判定
-    const isSecondaryVoice = ["customer", "guest", "interviewee"].includes(cut.speaker || "");
+    const isSecondaryVoice = ["customer", "guest", "interviewee", "speaker2"].includes(cut.speaker || "");
     const voiceToUse = cut.voiceId || (isSecondaryVoice ? secondaryVoiceId : selectedVoiceId);
 
     try {
@@ -1250,6 +1348,8 @@ export default function EditorPage() {
             voice: voiceToUse,
             style: cut.voiceStyle,
             model: ttsProvider === "gemini" ? selectedGeminiModel : undefined,
+            // AivisSpeech用
+            styleId: ttsProvider === "aivis" ? (isSecondaryVoice ? aivisSecondaryStyleId : aivisStyleId) : undefined,
           },
           customDictionary,
         }),
@@ -1339,7 +1439,7 @@ export default function EditorPage() {
               body: JSON.stringify({
                 prompt,
                 userId: user?.id || "anonymous",
-                model: "flash",
+                model: imageModel,  // flash=高速, pro=高品質・テキスト対応
                 aspectRatio,  // 現在のアスペクト比
                 generateBoth: true,  // 両方のアスペクト比を生成
               }),
@@ -1426,7 +1526,7 @@ export default function EditorPage() {
         body: JSON.stringify({
           prompt: prompt,
           userId: user?.id || "anonymous",
-          model: "flash",
+          model: imageModel,  // flash=高速, pro=高品質・テキスト対応
           aspectRatio,  // 現在のアスペクト比
           generateBoth: true,  // 両方のアスペクト比を生成
         }),
@@ -1529,6 +1629,7 @@ export default function EditorPage() {
         assets: cut.assets || [],  // アセット（図形・アイコン・テキスト等）
         emotion: "neutral" as const,
         transition: mapTransition(cut.transition),
+        textDisplayMode: cut.textDisplayMode || "word-bounce",  // テキスト表示モード
         animation: {
           imageEffect: mapImageEffect(cut.imageEffect),
           textEntrance: mapTextAnimation(cut.textAnimation),
@@ -1566,6 +1667,44 @@ export default function EditorPage() {
       showSubtitle: styleConfig.showSubtitle,
     };
   }, [createScenesForAspectRatio, videoTitle, aspectRatio, hasAnyImage, styleConfig.showSubtitle]);
+
+  // 1カットプレビュー用（選択されたカットのみ）
+  const singleCutVideoProps = useMemo((): VideoProps | null => {
+    if (previewCutId === null) return null;
+    const cut = styleConfig.cuts.find(c => c.id === previewCutId);
+    if (!cut) return null;
+
+    // 選択されたアスペクト比に応じた画像URLを選択
+    const selectedImageUrl = previewAspectRatio === "9:16"
+      ? (cut.imageUrl9x16 || cut.imageUrl)
+      : (cut.imageUrl16x9 || cut.imageUrl);
+
+    const scene: Scene = {
+      duration: cut.endTime - cut.startTime,
+      avatar_script: cut.subtitle || `シーン ${cut.id}`,
+      subtitle: cut.subtitle || "",
+      image_prompt: cut.imagePrompt || "abstract background",
+      imageUrl: selectedImageUrl,
+      audioUrl: cut.voiceUrl,
+      assets: cut.assets || [],
+      emotion: "neutral" as const,
+      transition: "fade" as const,  // 1カットなのでトランジションは不要
+      textDisplayMode: cut.textDisplayMode || "word-bounce",
+      animation: {
+        imageEffect: mapImageEffect(cut.imageEffect),
+        textEntrance: mapTextAnimation(cut.textAnimation),
+        sceneEntrance: "fade",
+      },
+    };
+
+    return {
+      title: `カット ${cut.id} プレビュー`,
+      scenes: [scene],
+      aspectRatio: previewAspectRatio,
+      textOnly: !selectedImageUrl,
+      showSubtitle: true,  // プレビューでは常にテキスト表示
+    };
+  }, [previewCutId, styleConfig.cuts, previewAspectRatio, mapImageEffect, mapTextAnimation]);
 
   // Render to MP4
   const handleRender = async () => {
@@ -2083,6 +2222,29 @@ export default function EditorPage() {
                 </div>
               </div>
 
+              {/* Image Model Selection */}
+              <div className="mb-3">
+                <label className="text-xs text-orange-300/70 mb-1 block">画像モデル</label>
+                <div className="flex gap-1">
+                  {IMAGE_MODEL_OPTIONS.map((model) => (
+                    <button
+                      key={model.id}
+                      onClick={() => setImageModel(model.id)}
+                      className={`flex-1 flex flex-col items-center justify-center py-1.5 px-2 rounded text-xs font-medium transition-colors ${
+                        imageModel === model.id
+                          ? "bg-orange-500 text-white"
+                          : "bg-gray-700 text-gray-400 hover:text-white"
+                      }`}
+                      title={model.description}
+                    >
+                      <span className="text-sm">{model.icon}</span>
+                      <span className="text-[10px]">{model.name}</span>
+                      <span className="text-[9px] opacity-70">{model.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Progress indicator with thumbnails */}
               {(() => {
                 const totalWithPrompt = styleConfig.cuts.filter(c => c.imagePrompt?.trim() || c.images?.[0]?.prompt).length;
@@ -2290,6 +2452,21 @@ export default function EditorPage() {
                   >
                     ElevenLabs
                   </button>
+                  <button
+                    onClick={() => {
+                      setTtsProvider("aivis");
+                      setSelectedVoiceId(AIVIS_VOICE_OPTIONS[0].id);
+                      setAivisStyleId(AIVIS_VOICE_OPTIONS[0].styleId);
+                    }}
+                    className={`flex-1 py-1.5 px-2 rounded text-xs font-medium transition-colors ${
+                      ttsProvider === "aivis"
+                        ? "bg-green-500 text-white"
+                        : "bg-gray-700 text-gray-400 hover:text-white"
+                    }`}
+                    title="無料・ローカル実行"
+                  >
+                    Aivis
+                  </button>
                 </div>
               </div>
 
@@ -2321,25 +2498,70 @@ export default function EditorPage() {
                 <label className="text-xs text-green-300/70 mb-1 block">
                   メイン話者（ナレーター/ホスト）
                 </label>
-                <div className="grid grid-cols-2 gap-1">
-                  {getVoiceOptionsForProvider(ttsProvider).map((voice) => (
-                    <button
-                      key={voice.id}
-                      onClick={() => setSelectedVoiceId(voice.id)}
-                      className={`py-1.5 px-2 rounded text-xs transition-colors text-left ${
-                        selectedVoiceId === voice.id
-                          ? "bg-green-500 text-white"
-                          : "bg-gray-700/50 text-gray-300 hover:bg-gray-600"
-                      }`}
-                      title={voice.description}
-                    >
-                      <span className="font-medium">{voice.name}</span>
-                      <span className="text-[10px] opacity-70 ml-1">
-                        {voice.gender === "female" ? "♀" : "♂"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+                {ttsProvider === "aivis" ? (
+                  /* Aivis: アコーディオン表示 */
+                  <div className="space-y-1">
+                    {AIVIS_VOICE_GROUPS.map((group) => {
+                      const isExpanded = expandedAivisGroup === group.name;
+                      const selectedStyle = group.styles.find(s => s.styleId === aivisStyleId);
+                      return (
+                        <div key={group.name} className="rounded overflow-hidden">
+                          <button
+                            onClick={() => setExpandedAivisGroup(isExpanded ? null : group.name)}
+                            className={`w-full py-1.5 px-2 text-xs text-left flex items-center justify-between ${
+                              selectedStyle ? "bg-green-600 text-white" : "bg-gray-700/50 text-gray-300 hover:bg-gray-600"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {group.icon ? (
+                                <img src={group.icon} alt={group.name} className="w-6 h-6 rounded-full object-cover" />
+                              ) : (
+                                <span className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-[10px]">{group.gender === "female" ? "♀" : "♂"}</span>
+                              )}
+                              <span>
+                                <span className="font-medium">{group.name}</span>
+                                {selectedStyle && <span className="text-[10px] ml-2 opacity-80">({selectedStyle.description})</span>}
+                              </span>
+                            </span>
+                            <span className="text-[10px]">{isExpanded ? "▲" : "▼"}</span>
+                          </button>
+                          {isExpanded && (
+                            <div className="grid grid-cols-3 gap-0.5 p-1 bg-gray-800/50">
+                              {group.styles.map((style) => (
+                                <button
+                                  key={style.id}
+                                  onClick={() => { setSelectedVoiceId(style.id); setAivisStyleId(style.styleId); }}
+                                  className={`py-1 px-1.5 rounded text-[10px] ${
+                                    aivisStyleId === style.styleId ? "bg-green-500 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                                  }`}
+                                >
+                                  {style.description}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* その他: グリッド表示 */
+                  <div className="grid grid-cols-2 gap-1">
+                    {getVoiceOptionsForProvider(ttsProvider).map((voice) => (
+                      <button
+                        key={voice.id}
+                        onClick={() => setSelectedVoiceId(voice.id)}
+                        className={`py-1.5 px-2 rounded text-xs transition-colors text-left ${
+                          selectedVoiceId === voice.id ? "bg-green-500 text-white" : "bg-gray-700/50 text-gray-300 hover:bg-gray-600"
+                        }`}
+                        title={voice.description}
+                      >
+                        <span className="font-medium">{voice.name}</span>
+                        <span className="text-[10px] opacity-70 ml-1">{voice.gender === "female" ? "♀" : "♂"}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Voice Selection - 第2話者 */}
@@ -2347,25 +2569,70 @@ export default function EditorPage() {
                 <label className="text-xs text-green-300/70 mb-1 block">
                   第2話者（ゲスト/お客様の声）
                 </label>
-                <div className="grid grid-cols-2 gap-1">
-                  {getVoiceOptionsForProvider(ttsProvider).map((voice) => (
-                    <button
-                      key={`secondary-${voice.id}`}
-                      onClick={() => setSecondaryVoiceId(voice.id)}
-                      className={`py-1.5 px-2 rounded text-xs transition-colors text-left ${
-                        secondaryVoiceId === voice.id
-                          ? "bg-orange-500 text-white"
-                          : "bg-gray-700/50 text-gray-300 hover:bg-gray-600"
-                      }`}
-                      title={voice.description}
-                    >
-                      <span className="font-medium">{voice.name}</span>
-                      <span className="text-[10px] opacity-70 ml-1">
-                        {voice.gender === "female" ? "♀" : "♂"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+                {ttsProvider === "aivis" ? (
+                  /* Aivis: アコーディオン表示 */
+                  <div className="space-y-1">
+                    {AIVIS_VOICE_GROUPS.map((group) => {
+                      const isExpanded = expandedAivisSecondaryGroup === group.name;
+                      const selectedStyle = group.styles.find(s => s.styleId === aivisSecondaryStyleId);
+                      return (
+                        <div key={group.name} className="rounded overflow-hidden">
+                          <button
+                            onClick={() => setExpandedAivisSecondaryGroup(isExpanded ? null : group.name)}
+                            className={`w-full py-1.5 px-2 text-xs text-left flex items-center justify-between ${
+                              selectedStyle ? "bg-orange-600 text-white" : "bg-gray-700/50 text-gray-300 hover:bg-gray-600"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {group.icon ? (
+                                <img src={group.icon} alt={group.name} className="w-6 h-6 rounded-full object-cover" />
+                              ) : (
+                                <span className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-[10px]">{group.gender === "female" ? "♀" : "♂"}</span>
+                              )}
+                              <span>
+                                <span className="font-medium">{group.name}</span>
+                                {selectedStyle && <span className="text-[10px] ml-2 opacity-80">({selectedStyle.description})</span>}
+                              </span>
+                            </span>
+                            <span className="text-[10px]">{isExpanded ? "▲" : "▼"}</span>
+                          </button>
+                          {isExpanded && (
+                            <div className="grid grid-cols-3 gap-0.5 p-1 bg-gray-800/50">
+                              {group.styles.map((style) => (
+                                <button
+                                  key={style.id}
+                                  onClick={() => { setSecondaryVoiceId(style.id); setAivisSecondaryStyleId(style.styleId); }}
+                                  className={`py-1 px-1.5 rounded text-[10px] ${
+                                    aivisSecondaryStyleId === style.styleId ? "bg-orange-500 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                                  }`}
+                                >
+                                  {style.description}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* その他: グリッド表示 */
+                  <div className="grid grid-cols-2 gap-1">
+                    {getVoiceOptionsForProvider(ttsProvider).map((voice) => (
+                      <button
+                        key={`secondary-${voice.id}`}
+                        onClick={() => setSecondaryVoiceId(voice.id)}
+                        className={`py-1.5 px-2 rounded text-xs transition-colors text-left ${
+                          secondaryVoiceId === voice.id ? "bg-orange-500 text-white" : "bg-gray-700/50 text-gray-300 hover:bg-gray-600"
+                        }`}
+                        title={voice.description}
+                      >
+                        <span className="font-medium">{voice.name}</span>
+                        <span className="text-[10px] opacity-70 ml-1">{voice.gender === "female" ? "♀" : "♂"}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <p className="text-[10px] text-gray-500 mt-1">
                   ※ 台本で「customer」「guest」等に設定されたシーンで使用
                 </p>
@@ -2470,8 +2737,12 @@ export default function EditorPage() {
                 regeneratingCutId={regeneratingCutId}
                 onGenerateImage={handleGenerateSingleImage}
                 generatingImageCutId={generatingSingleImageCutId}
+                onPreviewCut={setPreviewCutId}
                 mainVoiceId={selectedVoiceId}
                 secondaryVoiceId={secondaryVoiceId}
+                ttsProvider={ttsProvider}
+                mainVoiceName={ttsProvider === "aivis" ? AIVIS_VOICE_OPTIONS.find(v => v.styleId === aivisStyleId)?.name : undefined}
+                secondaryVoiceName={ttsProvider === "aivis" ? AIVIS_VOICE_OPTIONS.find(v => v.styleId === aivisSecondaryStyleId)?.name : undefined}
               />
             )}
           </div>
@@ -2775,6 +3046,51 @@ export default function EditorPage() {
         }}
         initialText={dictionaryInitialText}
       />
+
+      {/* Single Cut Preview Modal */}
+      {previewCutId !== null && singleCutVideoProps && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 rounded-xl max-w-2xl w-full flex flex-col border border-purple-500/50">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="text-purple-400">▶</span>
+                カット {previewCutId} プレビュー
+                <span className="text-xs text-gray-400 ml-2">
+                  （テキスト表示: {styleConfig.cuts.find(c => c.id === previewCutId)?.textDisplayMode === "sync-typewriter" ? "タイプライター" : styleConfig.cuts.find(c => c.id === previewCutId)?.textDisplayMode === "instant" ? "即時" : "バウンス"}）
+                </span>
+              </h3>
+              <button
+                onClick={() => setPreviewCutId(null)}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {/* Preview Player */}
+            <div className="p-4 flex justify-center">
+              <div className={`${previewAspectRatio === "9:16" ? "w-[280px]" : "w-full max-w-[500px]"}`}>
+                <VideoPreview
+                  videoProps={singleCutVideoProps}
+                  onTimeUpdate={() => {}}
+                />
+              </div>
+            </div>
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-700 flex justify-between items-center">
+              <div className="text-xs text-gray-400">
+                Duration: {(styleConfig.cuts.find(c => c.id === previewCutId)?.endTime || 0) - (styleConfig.cuts.find(c => c.id === previewCutId)?.startTime || 0)}秒
+              </div>
+              <button
+                onClick={() => setPreviewCutId(null)}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
