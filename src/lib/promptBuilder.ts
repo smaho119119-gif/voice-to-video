@@ -58,9 +58,11 @@ CRITICAL: 以下のルールを厳守すること
 
 /**
  * シーン数を計算
+ * - 最小3シーン、最大25シーン
+ * - 1シーンあたり約7-10秒を想定
  */
 export function calculateSceneCount(targetDuration: number): number {
-    return Math.max(3, Math.min(10, Math.ceil(targetDuration / 10)));
+    return Math.max(3, Math.min(25, Math.ceil(targetDuration / 8)));
 }
 
 /**
@@ -98,10 +100,12 @@ ${styleGuide}
 {
   "title": "動画のタイトル（キャッチーで興味を引くもの）",
   "description": "動画の概要説明（50文字以内）",
+  "format": "single/dialogue/interview/testimonial のいずれか",
   "scenes": [
     {
       "scene_index": 1,
       "duration": 5,
+      "speaker": "narrator/host/guest/customer/expert/interviewer/interviewee のいずれか",
       "main_text": {
         "type": "title/quiz/bullet/highlight のいずれか",
         "lines": ["メイン文字1行目", "メイン文字2行目（クイズや箇条書きの場合）"]
@@ -130,6 +134,41 @@ ${styleGuide}
   "total_duration": 合計秒数,
   "tags": ["関連タグ1", "関連タグ2", "関連タグ3"]
 }
+
+【話者（speaker）の指針】CRITICAL: 複数話者対応！
+内容に応じて適切な話者を設定することで、異なる声で読み上げます。
+
+話者タイプ:
+- "narrator": ナレーター（デフォルト、メインの説明役）
+- "host": ホスト/司会者（対話形式のメイン進行役）
+- "guest": ゲスト（対話の相手、2人目の声）
+- "customer": お客様の声（体験談、レビュー）
+- "expert": 専門家（権威ある解説）
+- "interviewer": インタビュアー（質問する側）
+- "interviewee": インタビュイー（答える側）
+
+使い分けの例:
+1. **通常の説明動画**: 全シーン "narrator"
+2. **お客様の声を含む**: 体験談シーンは "customer"、説明は "narrator"
+3. **対話形式（NotebookLM風）**: "host" と "guest" を交互に
+4. **インタビュー形式**: "interviewer" と "interviewee" を交互に
+5. **専門家解説**: 権威ある説明部分は "expert"
+
+対話形式の台本例:
+- シーン1: speaker="host" 「今日は〇〇について話していきましょう！」
+- シーン2: speaker="guest" 「はい、これは本当に興味深いテーマですね。」
+- シーン3: speaker="host" 「まず基本的なところから説明しますね。」
+- シーン4: speaker="guest" 「なるほど、つまり〜ということですか？」
+
+お客様の声の例:
+- シーン1: speaker="narrator" 「このサービスを使った方の声をご紹介します。」
+- シーン2: speaker="customer" 「最初は不安でしたが、使ってみて本当に良かったです。」
+- シーン3: speaker="narrator" 「このように多くの方にご満足いただいています。」
+
+CRITICAL:
+- テーマに「お客様の声」「体験談」「レビュー」が含まれる場合は "customer" を使用
+- テーマに「対話」「会話」「二人」「掛け合い」が含まれる場合は "host"/"guest" を交互に使用
+- テーマに「インタビュー」「質問」が含まれる場合は "interviewer"/"interviewee" を使用
 
 【メインテキスト（main_text）のタイプ指針】
 - "title": 大きなタイトル文字（インパクトのある1〜2行）

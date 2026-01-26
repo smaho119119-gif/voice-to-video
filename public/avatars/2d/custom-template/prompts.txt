@@ -1,0 +1,72 @@
+# nanobanana pro プロンプトテンプレート
+# リップシンク用キャラシート生成
+
+===============================
+■ ベースキャラクター
+===============================
+anime character, front facing portrait, white background,
+looking at viewer, high quality, detailed face, cute style,
+[あなたのキャラ設定を追加: 髪色、目の色、服装など]
+
+===============================
+■ 口形バリエーション（同じシードで！）
+===============================
+
+--- mouth-A.png (あー) ---
+[ベースプロンプト], open mouth wide, saying "ah", vowel A
+
+--- mouth-B.png (んー/むー) ---
+[ベースプロンプト], closed mouth, lips pressed together, M sound
+
+--- mouth-C.png (いー) ---
+[ベースプロンプト], wide smile showing teeth, EE sound, grinning
+
+--- mouth-D.png (えー) ---
+[ベースプロンプト], slightly open mouth, relaxed jaw, eh sound
+
+--- mouth-E.png (おー) ---
+[ベースプロンプト], round mouth, O shape, pursed lips, oh sound
+
+--- mouth-F.png (ふー/ヴー) ---
+[ベースプロンプト], upper teeth on lower lip, F V sound
+
+--- mouth-G.png (笑顔) ---
+[ベースプロンプト], big smile showing teeth, happy expression
+
+--- mouth-H.png (Lの音) ---
+[ベースプロンプト], tongue visible touching upper teeth, L sound
+
+--- mouth-X.png (デフォルト) ---
+[ベースプロンプト], neutral expression, slight gentle smile, relaxed
+
+===============================
+■ 目のバリエーション
+===============================
+
+--- eyes-open.png ---
+[ベースプロンプト], eyes wide open, alert, looking forward
+
+--- eyes-half.png ---
+[ベースプロンプト], eyes half closed, drowsy, relaxed eyelids
+
+--- eyes-closed.png ---
+[ベースプロンプト], eyes closed, peaceful, blinking moment
+
+===============================
+■ 推奨設定
+===============================
+- サイズ: 512x512 (正方形)
+- 背景: 白 or 透明
+- シード: 全画像で同じ値を使用！
+- CFG Scale: 7-8
+- Steps: 30-40
+
+===============================
+■ img2img ワークフロー
+===============================
+1. ベース画像を生成
+2. img2imgでInpaint（口だけ塗りつぶし）
+3. 口形プロンプトで再生成
+4. 各口形を保存
+
+これで一貫性のあるキャラシートが作れます！

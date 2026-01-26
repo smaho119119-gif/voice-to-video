@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Eye white gradient -->
+    <radialGradient id="eyeWhite" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F0F0F0"/>
+    </radialGradient>
+
+    <!-- Iris gradient -->
+    <radialGradient id="irisGrad" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#6B5B4F"/>
+      <stop offset="40%" stop-color="#4A3C31"/>
+      <stop offset="100%" stop-color="#2C1810"/>
+    </radialGradient>
+
+    <!-- Pupil highlight -->
+    <radialGradient id="pupilGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1A1A1A"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+
+    <!-- Eye shadow -->
+    <linearGradient id="eyeShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#D4A68C" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Left eye -->
+  <g>
+    <!-- Eye shadow above -->
+    <ellipse cx="130" cy="155" rx="38" ry="15" fill="url(#eyeShadow)"/>
+
+    <!-- Eye white -->
+    <ellipse cx="130" cy="165" rx="35" ry="28" fill="url(#eyeWhite)"/>
+    <ellipse cx="130" cy="165" rx="35" ry="28" fill="none" stroke="#C4A68C" stroke-width="1.5"/>
+
+    <!-- Iris -->
+    <circle cx="135" cy="168" r="18" fill="url(#irisGrad)"/>
+
+    <!-- Pupil -->
+    <circle cx="135" cy="168" r="9" fill="url(#pupilGrad)"/>
+
+    <!-- Main highlight -->
+    <ellipse cx="142" cy="160" rx="6" ry="5" fill="white" opacity="0.95"/>
+
+    <!-- Secondary highlight -->
+    <circle cx="128" cy="175" r="3" fill="white" opacity="0.6"/>
+
+    <!-- Upper eyelid line -->
+    <path d="M95 155 Q130 140, 165 155" stroke="#4E342E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Eyelashes -->
+    <path d="M100 152 L95 145" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M115 147 L112 138" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M130 145 L130 136" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M145 147 L148 138" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M160 152 L165 145" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Right eye -->
+  <g>
+    <!-- Eye shadow above -->
+    <ellipse cx="270" cy="155" rx="38" ry="15" fill="url(#eyeShadow)"/>
+
+    <!-- Eye white -->
+    <ellipse cx="270" cy="165" rx="35" ry="28" fill="url(#eyeWhite)"/>
+    <ellipse cx="270" cy="165" rx="35" ry="28" fill="none" stroke="#C4A68C" stroke-width="1.5"/>
+
+    <!-- Iris -->
+    <circle cx="265" cy="168" r="18" fill="url(#irisGrad)"/>
+
+    <!-- Pupil -->
+    <circle cx="265" cy="168" r="9" fill="url(#pupilGrad)"/>
+
+    <!-- Main highlight -->
+    <ellipse cx="272" cy="160" rx="6" ry="5" fill="white" opacity="0.95"/>
+
+    <!-- Secondary highlight -->
+    <circle cx="258" cy="175" r="3" fill="white" opacity="0.6"/>
+
+    <!-- Upper eyelid line -->
+    <path d="M235 155 Q270 140, 305 155" stroke="#4E342E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Eyelashes -->
+    <path d="M240 152 L235 145" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M255 147 L252 138" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M270 145 L270 136" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M285 147 L288 138" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M300 152 L305 145" stroke="#3E2723" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Lip gradient -->
+    <linearGradient id="lipGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E88B8B"/>
+      <stop offset="50%" stop-color="#D46A6A"/>
+      <stop offset="100%" stop-color="#C45555"/>
+    </linearGradient>
+
+    <!-- Teeth gradient -->
+    <linearGradient id="teethGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F0F0F0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mouth F: F/V sound (teeth on lower lip) -->
+  <g>
+    <!-- Upper lip -->
+    <path d="M155 287 Q175 280, 200 282 Q225 280, 245 287 Q225 290, 200 289 Q175 290, 155 287"
+          fill="url(#lipGrad)"/>
+
+    <!-- Upper teeth row (visible, biting lower lip) -->
+    <rect x="162" y="287" width="76" height="11" rx="1" fill="url(#teethGrad)"/>
+
+    <!-- Individual teeth lines -->
+    <line x1="177" y1="287" x2="177" y2="298" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="192" y1="287" x2="192" y2="298" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="207" y1="287" x2="207" y2="298" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="222" y1="287" x2="222" y2="298" stroke="#E8E8E8" stroke-width="0.5"/>
+
+    <!-- Lower lip (partially hidden by teeth) -->
+    <path d="M158 300 Q175 308, 200 310 Q225 308, 242 300 Q225 305, 200 306 Q175 305, 158 300"
+          fill="url(#lipGrad)"/>
+
+    <!-- Teeth touching lower lip -->
+    <path d="M162 298 Q200 302, 238 298" stroke="#DDD" stroke-width="1" fill="none"/>
+
+    <!-- Upper lip highlight -->
+    <path d="M165 284 Q185 281, 200 282"
+          stroke="white" stroke-width="2" stroke-opacity="0.3" fill="none" stroke-linecap="round"/>
+
+    <!-- Lower lip highlight -->
+    <path d="M175 305 Q200 308, 225 305"
+          stroke="white" stroke-width="1.5" stroke-opacity="0.2" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Eye shadow -->
+    <linearGradient id="eyeShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#D4A68C" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#FFDAB9" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Eyelid skin -->
+    <linearGradient id="lidSkin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFDAB9"/>
+      <stop offset="100%" stop-color="#F5C6A5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Left eye (closed) -->
+  <g>
+    <!-- Subtle eye shadow area -->
+    <ellipse cx="130" cy="165" rx="40" ry="20" fill="url(#eyeShadow)"/>
+
+    <!-- Eyelid area -->
+    <ellipse cx="130" cy="165" rx="38" ry="15" fill="url(#lidSkin)"/>
+
+    <!-- Closed eye curve - gentle arc -->
+    <path d="M92 165 Q130 180, 168 165" stroke="#4E342E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Eyelashes on closed lid -->
+    <path d="M100 168 L97 175" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M115 172 L113 180" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M130 175 L130 183" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M145 172 L147 180" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M160 168 L163 175" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Eyelid crease -->
+    <path d="M95 155 Q130 145, 165 155" stroke="#D4A68C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Right eye (closed) -->
+  <g>
+    <!-- Subtle eye shadow area -->
+    <ellipse cx="270" cy="165" rx="40" ry="20" fill="url(#eyeShadow)"/>
+
+    <!-- Eyelid area -->
+    <ellipse cx="270" cy="165" rx="38" ry="15" fill="url(#lidSkin)"/>
+
+    <!-- Closed eye curve - gentle arc -->
+    <path d="M232 165 Q270 180, 308 165" stroke="#4E342E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Eyelashes on closed lid -->
+    <path d="M240 168 L237 175" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M255 172 L253 180" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M270 175 L270 183" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M285 172 L287 180" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M300 168 L303 175" stroke="#3E2723" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Eyelid crease -->
+    <path d="M235 155 Q270 145, 305 155" stroke="#D4A68C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

@@ -4,7 +4,7 @@ import { AbsoluteFill, Sequence, useVideoConfig, useCurrentFrame, interpolate, A
 import { AvatarComponent } from "../AvatarComponent";
 import { FilmGrain } from "../FilmGrain";
 import { AssetRenderer } from "./AssetRenderer";
-import type { Scene, AvatarConfig, TextDisplayMode } from "../MainVideo";
+import type { Scene, AvatarConfig, TextDisplayMode, CharTiming } from "../MainVideo";
 import { VOLUME_LEVELS, TRANSITION_CONFIGS, KEN_BURNS_PATTERNS } from "../utils/constants";
 import { getTransitionForScene } from "../utils/transitions";
 import { splitTextForAnimation, splitWordsJa } from "../utils/textSplitter";
@@ -146,9 +146,15 @@ export const SceneComponent: React.FC<SceneComponentProps> = ({ scene, sceneInde
     };
 
     // === TEXT ANIMATION ===
+    // mainText: 画面中央に大きく表示（タイプライター等）
+    // subtitle: 画面下部の字幕
+    const mainText = scene.mainText || ""; // メインテキスト（空の場合は非表示）
+    const subtitleText = scene.subtitle || ""; // 字幕テキスト
+
     // Split text into characters for typewriter effect
-    const chars = useMemo(() => splitTextForAnimation(scene.subtitle), [scene.subtitle]);
-    const words = useMemo(() => splitWordsJa(scene.subtitle), [scene.subtitle]);
+    const mainChars = useMemo(() => splitTextForAnimation(mainText), [mainText]);
+    const mainWords = useMemo(() => splitWordsJa(mainText), [mainText]);
+    const subtitleChars = useMemo(() => splitTextForAnimation(subtitleText), [subtitleText]);
 
     // Text display mode (default: word-bounce for backward compatibility)
     const textDisplayMode: TextDisplayMode = scene.textDisplayMode || "word-bounce";
@@ -158,16 +164,31 @@ export const SceneComponent: React.FC<SceneComponentProps> = ({ scene, sceneInde
     const charDuration = 8; // frames for each char to animate in
 
     // === SYNC-TYPEWRITER: Calculate timing based on audio duration ===
-    // 音声の長さに合わせて1文字ずつ表示
+    // 音声の長さにピッタリ合わせて1文字ずつ表示
     const syncTypewriterConfig = useMemo(() => {
-        if (textDisplayMode !== "sync-typewriter" || chars.length === 0) {
-            return { framesPerChar: 2, startDelay: fps * 0.1 };
+        if (textDisplayMode !== "sync-typewriter" || mainChars.length === 0) {
+            return { framesPerChar: 2, startDelay: 0 };
         }
-        // 音声の90%の時間で全文字を表示（残り10%は表示維持）
-        const displayDuration = totalFrames * 0.9;
-        const framesPerChar = Math.max(1, Math.floor(displayDuration / chars.length));
-        return { framesPerChar, startDelay: fps * 0.1 };
-    }, [textDisplayMode, chars.length, totalFrames, fps]);
+        // 音声の100%の時間で全文字を表示（最初から最後までピッタリ）
+        // 最後の文字が終わりに表示されるように計算
+        const framesPerChar = Math.max(1, Math.floor(totalFrames / mainChars.length));
+        return { framesPerChar, startDelay: 0 };
+    }, [textDisplayMode, mainChars.length, totalFrames]);
+
+    // === PRECISE-SYNC: AivisSpeech charTimings を使った精密同期 ===
+    // charTimings が存在する場合、各文字の開始・終了時刻をフレームに変換
+    const charTimings = scene.charTimings;
+    const hasPreciseTiming = charTimings && charTimings.length > 0;
+
+    // charTimingsをフレームベースに変換（キャッシュ）
+    const charTimingFrames = useMemo(() => {
+        if (!charTimings || charTimings.length === 0) return [];
+        return charTimings.map(ct => ({
+            char: ct.char,
+            startFrame: Math.floor(ct.start * fps),
+            endFrame: Math.floor(ct.end * fps),
+        }));
+    }, [charTimings, fps]);
 
     // === CENTER TEXT ANIMATION (タイプライター + ビヨーン効果) ===
     const centerTextEnterDelay = fps * 0.3; // Start after 0.3 seconds
@@ -281,7 +302,8 @@ export const SceneComponent: React.FC<SceneComponentProps> = ({ scene, sceneInde
             )}
 
             {/* === CENTER TEXT - Multiple Display Modes === */}
-            {showSubtitle && (
+            {/* mainTextがある場合のみ表示 */}
+            {showSubtitle && mainText && (
             <div
                 style={{
                     position: "absolute",
@@ -319,59 +341,133 @@ export const SceneComponent: React.FC<SceneComponentProps> = ({ scene, sceneInde
                                     textShadow: "0 6px 30px rgba(0,0,0,0.5), 0 2px 10px rgba(0,0,0,0.3)",
                                 }}
                             >
-                                {scene.subtitle}
+                                {mainText}
                             </span>
                         )}
 
                         {/* === SYNC-TYPEWRITER MODE: 音声同期タイプライター === */}
-                        {textDisplayMode === "sync-typewriter" && chars.map((char, i) => {
-                            const charStart = syncTypewriterConfig.startDelay + i * syncTypewriterConfig.framesPerChar;
-                            const localFrame = frame - charStart;
-                            const visible = localFrame >= 0;
+                        {/* charTimingsがある場合は精密同期（元テキストを表示）、ない場合は従来の均等割り */}
+                        {textDisplayMode === "sync-typewriter" && (
+                            hasPreciseTiming ? (
+                                // === 精密同期モード: charTimingsの総時間を使用し、元テキスト(mainChars)を表示 ===
+                                // AivisSpeechのcharTimingsは「読み」（ひらがな）なので、表示は元の漢字テキストを使用
+                                (() => {
+                                    // charTimingsの総時間を計算
+                                    const totalDuration = charTimingFrames.length > 0
+                                        ? charTimingFrames[charTimingFrames.length - 1].endFrame
+                                        : totalFrames;
+                                    // 元テキストの文字数で割って、1文字あたりのフレーム数を計算
+                                    const framesPerOriginalChar = mainChars.length > 0
+                                        ? Math.max(1, Math.floor(totalDuration / mainChars.length))
+                                        : 1;
 
-                            // Smooth fade-in for each character
-                            const opacity = visible
-                                ? interpolate(localFrame, [0, 3], [0, 1], { extrapolateRight: "clamp" })
-                                : 0;
+                                    return mainChars.map((char, i) => {
+                                        const charStart = i * framesPerOriginalChar;
+                                        const localFrame = frame - charStart;
+                                        const visible = localFrame >= 0;
 
-                            // Subtle scale animation
-                            const scale = visible
-                                ? interpolate(localFrame, [0, 4], [0.8, 1], { extrapolateRight: "clamp" })
-                                : 0.8;
+                                        // Smooth fade-in for each character
+                                        const opacity = visible
+                                            ? interpolate(localFrame, [0, Math.min(3, framesPerOriginalChar / 2)], [0, 1], { extrapolateRight: "clamp" })
+                                            : 0;
 
-                            // Cursor effect: show blinking cursor at the end of visible text
-                            const isLastVisible = visible && (i === chars.length - 1 || frame < syncTypewriterConfig.startDelay + (i + 1) * syncTypewriterConfig.framesPerChar);
-                            const cursorBlink = Math.sin(frame * 0.3) > 0;
+                                        // Subtle scale animation
+                                        const scale = visible
+                                            ? interpolate(localFrame, [0, Math.min(4, framesPerOriginalChar)], [0.8, 1], { extrapolateRight: "clamp" })
+                                            : 0.8;
 
-                            return (
-                                <span
-                                    key={`char-${i}`}
-                                    style={{
-                                        display: "inline",
-                                        opacity,
-                                        transform: `scale(${scale})`,
-                                        textShadow: "0 6px 30px rgba(0,0,0,0.5), 0 2px 10px rgba(0,0,0,0.3)",
-                                        position: "relative",
-                                    }}
-                                >
-                                    {char}
-                                    {/* Blinking cursor at current position */}
-                                    {isLastVisible && cursorBlink && (
-                                        <span style={{
-                                            display: "inline-block",
-                                            width: "3px",
-                                            height: "1em",
-                                            backgroundColor: accentColor,
-                                            marginLeft: "2px",
-                                            verticalAlign: "middle",
-                                        }} />
-                                    )}
-                                </span>
-                            );
-                        })}
+                                        // Highlight current character being spoken
+                                        const isSpeaking = frame >= charStart && frame < charStart + framesPerOriginalChar;
+                                        const speakingGlow = isSpeaking ? `0 0 15px ${accentColor}` : "";
+
+                                        // Cursor effect: show blinking cursor at the end of visible text
+                                        const isLastVisible = visible && (
+                                            i === mainChars.length - 1 ||
+                                            frame < (i + 1) * framesPerOriginalChar
+                                        );
+                                        const cursorBlink = Math.sin(frame * 0.3) > 0;
+
+                                        return (
+                                            <span
+                                                key={`char-${i}`}
+                                                style={{
+                                                    display: "inline",
+                                                    opacity,
+                                                    transform: `scale(${scale})`,
+                                                    textShadow: `0 6px 30px rgba(0,0,0,0.5), 0 2px 10px rgba(0,0,0,0.3)${speakingGlow ? `, ${speakingGlow}` : ""}`,
+                                                    position: "relative",
+                                                    color: isSpeaking ? "#fef08a" : "white",
+                                                    transition: "color 0.1s",
+                                                }}
+                                            >
+                                                {char}
+                                                {/* Blinking cursor at current position */}
+                                                {isLastVisible && cursorBlink && (
+                                                    <span style={{
+                                                        display: "inline-block",
+                                                        width: "3px",
+                                                        height: "1em",
+                                                        backgroundColor: accentColor,
+                                                        marginLeft: "2px",
+                                                        verticalAlign: "middle",
+                                                    }} />
+                                                )}
+                                            </span>
+                                        );
+                                    });
+                                })()
+                            ) : (
+                                // === 従来モード: 均等割りタイプライター ===
+                                mainChars.map((char, i) => {
+                                    const charStart = syncTypewriterConfig.startDelay + i * syncTypewriterConfig.framesPerChar;
+                                    const localFrame = frame - charStart;
+                                    const visible = localFrame >= 0;
+
+                                    // Smooth fade-in for each character
+                                    const opacity = visible
+                                        ? interpolate(localFrame, [0, 3], [0, 1], { extrapolateRight: "clamp" })
+                                        : 0;
+
+                                    // Subtle scale animation
+                                    const scale = visible
+                                        ? interpolate(localFrame, [0, 4], [0.8, 1], { extrapolateRight: "clamp" })
+                                        : 0.8;
+
+                                    // Cursor effect: show blinking cursor at the end of visible text
+                                    const isLastVisible = visible && (i === mainChars.length - 1 || frame < syncTypewriterConfig.startDelay + (i + 1) * syncTypewriterConfig.framesPerChar);
+                                    const cursorBlink = Math.sin(frame * 0.3) > 0;
+
+                                    return (
+                                        <span
+                                            key={`char-${i}`}
+                                            style={{
+                                                display: "inline",
+                                                opacity,
+                                                transform: `scale(${scale})`,
+                                                textShadow: "0 6px 30px rgba(0,0,0,0.5), 0 2px 10px rgba(0,0,0,0.3)",
+                                                position: "relative",
+                                            }}
+                                        >
+                                            {char}
+                                            {/* Blinking cursor at current position */}
+                                            {isLastVisible && cursorBlink && (
+                                                <span style={{
+                                                    display: "inline-block",
+                                                    width: "3px",
+                                                    height: "1em",
+                                                    backgroundColor: accentColor,
+                                                    marginLeft: "2px",
+                                                    verticalAlign: "middle",
+                                                }} />
+                                            )}
+                                        </span>
+                                    );
+                                })
+                            )
+                        )}
 
                         {/* === WORD-BOUNCE MODE: 単語バウンス（デフォルト） === */}
-                        {textDisplayMode === "word-bounce" && words.map((word, i) => {
+                        {textDisplayMode === "word-bounce" && mainWords.map((word, i) => {
                             const wordStart = centerTextEnterDelay + i * fps * 0.12; // 0.12 seconds per word
                             const localFrame = frame - wordStart;
                             const visible = localFrame >= 0;
@@ -439,7 +535,8 @@ export const SceneComponent: React.FC<SceneComponentProps> = ({ scene, sceneInde
             )}
 
             {/* === BOTTOM SUBTITLE - Typewriter style === */}
-            {showSubtitle && (
+            {/* subtitleTextがある場合のみ表示 */}
+            {showSubtitle && subtitleText && (
             <div
                 style={{
                     position: "absolute",
@@ -473,7 +570,7 @@ export const SceneComponent: React.FC<SceneComponentProps> = ({ scene, sceneInde
                             textAlign: "center",
                         }}
                     >
-                        {chars.map((char, i) => {
+                        {subtitleChars.map((char, i) => {
                             const charStart = fps * 0.2 + i * charDelay;
                             const localFrame = frame - charStart;
                             const visible = localFrame >= 0;
@@ -508,7 +605,7 @@ export const SceneComponent: React.FC<SceneComponentProps> = ({ scene, sceneInde
                                     }}
                                 >
                                     {char}
-                                    {isLastVisible && i === chars.length - 1 && (
+                                    {isLastVisible && i === subtitleChars.length - 1 && (
                                         <span
                                             style={{
                                                 position: "absolute",

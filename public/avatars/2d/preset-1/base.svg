@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Skin gradient -->
+    <radialGradient id="skinGrad" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFE8D6"/>
+      <stop offset="50%" stop-color="#FFDAB9"/>
+      <stop offset="100%" stop-color="#F5C6A5"/>
+    </radialGradient>
+
+    <!-- Face shadow -->
+    <radialGradient id="faceShadow" cx="50%" cy="100%" r="80%">
+      <stop offset="0%" stop-color="#E8B89D" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#FFDAB9" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Hair gradient -->
+    <linearGradient id="hairGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5D4037"/>
+      <stop offset="50%" stop-color="#4E342E"/>
+      <stop offset="100%" stop-color="#3E2723"/>
+    </linearGradient>
+
+    <!-- Hair highlight -->
+    <linearGradient id="hairHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8D6E63" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#5D4037" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Cheek blush -->
+    <radialGradient id="blushGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFB6C1" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#FFB6C1" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Nose shadow -->
+    <linearGradient id="noseShadow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E8B89D" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#FFDAB9" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Face base with gradient -->
+  <ellipse cx="200" cy="210" rx="160" ry="175" fill="url(#skinGrad)"/>
+
+  <!-- Face shadow overlay -->
+  <ellipse cx="200" cy="210" rx="160" ry="175" fill="url(#faceShadow)"/>
+
+  <!-- Face outline (subtle) -->
+  <ellipse cx="200" cy="210" rx="160" ry="175" fill="none" stroke="#E8B89D" stroke-width="2"/>
+
+  <!-- Eyebrows with thickness variation -->
+  <path d="M95 125 Q125 108, 165 118 Q175 122, 175 120"
+        stroke="#4E342E" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M225 120 Q235 122, 235 118 Q275 108, 305 125"
+        stroke="#4E342E" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+  <!-- Nose with subtle shading -->
+  <path d="M200 175 L195 225 Q200 235, 205 225 L200 175" fill="url(#noseShadow)"/>
+  <path d="M195 225 Q200 232, 205 225" stroke="#D4A68C" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  <!-- Cheek blush (left) -->
+  <ellipse cx="95" cy="230" rx="40" ry="25" fill="url(#blushGrad)"/>
+
+  <!-- Cheek blush (right) -->
+  <ellipse cx="305" cy="230" rx="40" ry="25" fill="url(#blushGrad)"/>
+
+  <!-- Hair back layer -->
+  <path d="M35 220
+           Q15 120, 80 55
+           Q140 5, 200 0
+           Q260 5, 320 55
+           Q385 120, 365 220
+           L355 200
+           Q350 100, 200 70
+           Q50 100, 45 200 Z"
+        fill="url(#hairGrad)"/>
+
+  <!-- Hair front/bangs -->
+  <path d="M50 180
+           Q55 100, 120 60
+           Q150 45, 160 80
+           Q170 50, 200 55
+           Q230 50, 240 80
+           Q250 45, 280 60
+           Q345 100, 350 180
+           Q340 120, 280 90
+           Q250 75, 220 95
+           Q200 85, 180 95
+           Q150 75, 120 90
+           Q60 120, 50 180 Z"
+        fill="url(#hairGrad)"/>
+
+  <!-- Hair highlight -->
+  <path d="M80 130 Q120 80, 180 75 Q200 73, 220 75 Q280 80, 320 130
+           Q280 100, 200 90 Q120 100, 80 130 Z"
+        fill="url(#hairHighlight)"/>
+
+  <!-- Side hair strands -->
+  <path d="M55 200 Q45 260, 55 320 Q60 340, 70 350"
+        stroke="#4E342E" stroke-width="20" fill="none" stroke-linecap="round"/>
+  <path d="M345 200 Q355 260, 345 320 Q340 340, 330 350"
+        stroke="#4E342E" stroke-width="20" fill="none" stroke-linecap="round"/>
+
+  <!-- Ear (left, visible) -->
+  <ellipse cx="55" cy="210" rx="15" ry="25" fill="#FFDAB9"/>
+  <ellipse cx="55" cy="210" rx="10" ry="18" fill="#F5C6A5"/>
+
+  <!-- Ear (right, visible) -->
+  <ellipse cx="345" cy="210" rx="15" ry="25" fill="#FFDAB9"/>
+  <ellipse cx="345" cy="210" rx="10" ry="18" fill="#F5C6A5"/>
+</svg>

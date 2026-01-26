@@ -30,13 +30,24 @@ import { ReadingDictionaryModal } from "@/components/ReadingDictionaryModal";
 
 type InputMode = "theme" | "url" | "voice";
 type TTSProvider = "google" | "elevenlabs" | "gemini" | "aivis";
-type ImageModel = "pro" | "flash";
+type ImageModel = "2.5-flash" | "pro";
 
 // 画像生成モデルオプション
 const IMAGE_MODEL_OPTIONS = [
-  { id: "flash" as ImageModel, name: "Flash", description: "高速・文字なし向け", icon: "⚡" },
-  { id: "pro" as ImageModel, name: "Pro", description: "高品質・テキスト対応", icon: "🎨" },
+  { id: "2.5-flash" as ImageModel, name: "2.5 Flash", description: "高速・1024px", icon: "⚡" },
+  { id: "pro" as ImageModel, name: "3 Pro", description: "高品質・4096px", icon: "🎨" },
 ];
+
+// プレースホルダーURLかどうかを判定（失敗した画像は再生成可能にする）
+function isPlaceholderImage(url: string | undefined | null): boolean {
+  if (!url) return true;
+  return url.includes("placehold.co") || url.includes("Image+Pending") || url.includes("Image%20Pending");
+}
+
+// 有効な画像URLかどうかを判定
+function hasValidImage(url: string | undefined | null): boolean {
+  return !!url && !isPlaceholderImage(url);
+}
 
 // Voice options per provider
 const GOOGLE_VOICE_OPTIONS = [
@@ -210,7 +221,8 @@ export default function EditorPage() {
   const [isGeneratingImages, setIsGeneratingImages] = useState(false);
   const [imageProgress, setImageProgress] = useState({ current: 0, total: 0 });
   const [currentGeneratingIndex, setCurrentGeneratingIndex] = useState<number | null>(null);
-  const [imageModel, setImageModel] = useState<ImageModel>("flash");  // flash=高速, pro=高品質・テキスト対応
+  const [imageModel, setImageModel] = useState<ImageModel>("2.5-flash");  // 2.5-flash=高速, 3-flash=バランス, pro=高品質
+  const [isEnhancingPrompts, setIsEnhancingPrompts] = useState(false);  // プロンプト強化中
 
   // Project loading
   const [showProjectList, setShowProjectList] = useState(false);
@@ -1186,6 +1198,27 @@ export default function EditorPage() {
     }));
   }, []);
 
+  // Handle TTS provider change (from CutList)
+  const handleTtsProviderChange = useCallback((provider: TTSProvider) => {
+    setTtsProvider(provider);
+    // プロバイダーに応じてデフォルトボイスを設定
+    switch (provider) {
+      case "google":
+        setSelectedVoiceId(GOOGLE_VOICE_OPTIONS[0].id);
+        break;
+      case "gemini":
+        setSelectedVoiceId(GEMINI_VOICE_OPTIONS[0].id);
+        break;
+      case "aivis":
+        setSelectedVoiceId(AIVIS_VOICE_OPTIONS[0].id);
+        setAivisStyleId(AIVIS_VOICE_OPTIONS[0].styleId);
+        break;
+      case "elevenlabs":
+        setSelectedVoiceId(ELEVENLABS_VOICE_OPTIONS[0].id);
+        break;
+    }
+  }, []);
+
   // Load custom dictionary from localStorage
   const getCustomDictionary = () => {
     try {
@@ -1403,7 +1436,8 @@ export default function EditorPage() {
 
     styleConfig.cuts.forEach((cut, index) => {
       const prompt = cut.imagePrompt || (cut.images && cut.images[0]?.prompt);
-      if (prompt && prompt.trim() && !cut.imageUrl) {
+      // プレースホルダーURLも「画像なし」として扱い、再生成可能にする
+      if (prompt && prompt.trim() && !hasValidImage(cut.imageUrl)) {
         cutsToGenerate.push({ index, prompt: prompt.trim() });
       }
     });
@@ -1501,6 +1535,79 @@ export default function EditorPage() {
       setIsGeneratingImages(false);
       setImageProgress({ current: 0, total: 0 });
       setCurrentGeneratingIndex(null);
+    }
+  };
+
+  // Enhance image prompts using AI (GPT-4o-mini)
+  const handleEnhancePrompts = async (): Promise<boolean> => {
+    // Find cuts that have prompts to enhance
+    const cutsWithPrompts = styleConfig.cuts.filter(c => c.imagePrompt?.trim() || c.images?.[0]?.prompt);
+
+    if (cutsWithPrompts.length === 0) {
+      showToast("強化するプロンプトがありません", "info");
+      return false;
+    }
+
+    setIsEnhancingPrompts(true);
+
+    try {
+      const response = await fetch("/api/enhance-image-prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          theme: themeInput || videoTitle || "CM動画",
+          aspectRatio,
+          cuts: styleConfig.cuts.map((cut, index) => ({
+            sceneIndex: index + 1,
+            imagePrompt: cut.imagePrompt || cut.images?.[0]?.prompt || "",
+            voiceText: cut.voiceText || "",
+            emotion: (cut as any).emotion || "neutral",  // emotion may exist from script generation
+            imageEffect: cut.imageEffect || "static",
+          })),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error("[Editor] Prompt enhancement failed:", data.error);
+        showToast(`プロンプト強化に失敗: ${data.error || "不明なエラー"}`, "error");
+        return false;
+      }
+
+      if (data.enhancedPrompts && Array.isArray(data.enhancedPrompts)) {
+        // Update cuts with enhanced prompts
+        const updatedCuts = styleConfig.cuts.map((cut, index) => {
+          const enhanced = data.enhancedPrompts.find((p: any) => p.sceneIndex === index + 1);
+          if (enhanced && enhanced.enhanced) {
+            return { ...cut, imagePrompt: enhanced.enhanced };
+          }
+          return cut;
+        });
+
+        setStyleConfig(prev => ({ ...prev, cuts: updatedCuts }));
+        showToast(`${data.enhancedPrompts.length}シーンのプロンプトを強化しました`, "success");
+        console.log(`[Editor] Enhanced ${data.enhancedPrompts.length} prompts, cost: $${data.usage?.estimatedCostUSD?.toFixed(4) || "?"}`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("[Editor] Prompt enhancement error:", error);
+      showToast("プロンプト強化中にエラーが発生しました", "error");
+      return false;
+    } finally {
+      setIsEnhancingPrompts(false);
+    }
+  };
+
+  // Enhance prompts then generate images
+  const handleEnhanceAndGenerateImages = async () => {
+    const enhanced = await handleEnhancePrompts();
+    if (enhanced) {
+      // Small delay to ensure state is updated
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await handleGenerateImages();
     }
   };
 
@@ -1621,8 +1728,9 @@ export default function EditorPage() {
 
       return {
         duration: cut.endTime - cut.startTime,
-        avatar_script: cut.subtitle || `シーン ${cut.id}`,
-        subtitle: cut.subtitle || `シーン ${cut.id} のテキスト`,
+        avatar_script: cut.voiceText || cut.subtitle || `シーン ${cut.id}`,
+        subtitle: cut.subtitle || "",  // 字幕（画面下部）
+        mainText: cut.mainText?.lines?.join("\n") || "",  // メインテキスト（画面中央）
         image_prompt: cut.imagePrompt || "abstract background",
         imageUrl: selectedImageUrl,
         audioUrl: cut.voiceUrl,  // 音声URL
@@ -1630,6 +1738,7 @@ export default function EditorPage() {
         emotion: "neutral" as const,
         transition: mapTransition(cut.transition),
         textDisplayMode: cut.textDisplayMode || "word-bounce",  // テキスト表示モード
+        charTimings: cut.charTimings,  // AivisSpeech文字タイミング（精密同期用）
         animation: {
           imageEffect: mapImageEffect(cut.imageEffect),
           textEntrance: mapTextAnimation(cut.textAnimation),
@@ -1681,8 +1790,9 @@ export default function EditorPage() {
 
     const scene: Scene = {
       duration: cut.endTime - cut.startTime,
-      avatar_script: cut.subtitle || `シーン ${cut.id}`,
-      subtitle: cut.subtitle || "",
+      avatar_script: cut.voiceText || cut.subtitle || `シーン ${cut.id}`,
+      subtitle: cut.subtitle || "",  // 字幕（画面下部）
+      mainText: cut.mainText?.lines?.join("\n") || "",  // メインテキスト（画面中央）
       image_prompt: cut.imagePrompt || "abstract background",
       imageUrl: selectedImageUrl,
       audioUrl: cut.voiceUrl,
@@ -1690,6 +1800,7 @@ export default function EditorPage() {
       emotion: "neutral" as const,
       transition: "fade" as const,  // 1カットなのでトランジションは不要
       textDisplayMode: cut.textDisplayMode || "word-bounce",
+      charTimings: cut.charTimings,  // AivisSpeech文字タイミング（精密同期用）
       animation: {
         imageEffect: mapImageEffect(cut.imageEffect),
         textEntrance: mapTextAnimation(cut.textAnimation),
@@ -2276,7 +2387,7 @@ export default function EditorPage() {
                       {styleConfig.cuts.map((cut, index) => {
                         const hasPrompt = cut.imagePrompt?.trim() || cut.images?.[0]?.prompt;
                         const isGenerating = isGeneratingImages && currentGeneratingIndex === index;
-                        const isGenerated = !!cut.imageUrl;
+                        const isGenerated = hasValidImage(cut.imageUrl);
                         const isPending = hasPrompt && !isGenerated && !isGenerating;
 
                         return (
@@ -2293,7 +2404,7 @@ export default function EditorPage() {
                             }`}
                             title={`シーン ${index + 1}${isGenerating ? " - 生成中..." : isGenerated ? " - 完了" : isPending ? " - 待機中" : " - プロンプトなし"}`}
                           >
-                            {isGenerated && cut.imageUrl ? (
+                            {isGenerated && hasValidImage(cut.imageUrl) ? (
                               <img
                                 src={cut.imageUrl}
                                 alt={`シーン ${index + 1}`}
@@ -2352,37 +2463,64 @@ export default function EditorPage() {
                   </div>
                 );
               })()}
-              <button
-                onClick={handleGenerateImages}
-                disabled={isGeneratingImages || !styleConfig.cuts.some(c => (c.imagePrompt?.trim() || c.images?.[0]?.prompt) && !c.imageUrl)}
-                className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                  isGeneratingImages || !styleConfig.cuts.some(c => (c.imagePrompt?.trim() || c.images?.[0]?.prompt) && !c.imageUrl)
-                    ? "bg-gray-700 text-gray-500 cursor-not-allowed"
-                    : "bg-gradient-to-r from-orange-600 to-amber-600 text-white hover:from-orange-500 hover:to-amber-500"
-                }`}
-              >
-                {isGeneratingImages ? (
-                  <>
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    生成中 {imageProgress.current}/{imageProgress.total}
-                  </>
-                ) : styleConfig.cuts.every(c => !c.imagePrompt?.trim() && !c.images?.[0]?.prompt) ? (
-                  <>
-                    <span>🎨</span>
-                    プロンプトなし
-                  </>
-                ) : styleConfig.cuts.filter(c => c.imageUrl).length === styleConfig.cuts.filter(c => c.imagePrompt?.trim() || c.images?.[0]?.prompt).length ? (
-                  <>
-                    <span>✓</span>
-                    全シーン生成完了
-                  </>
-                ) : (
-                  <>
-                    <span>🎨</span>
-                    未生成シーンの画像生成
-                  </>
-                )}
-              </button>
+              <div className="flex gap-2">
+                {/* 通常の画像生成ボタン */}
+                <button
+                  onClick={handleGenerateImages}
+                  disabled={isGeneratingImages || isEnhancingPrompts || !styleConfig.cuts.some(c => (c.imagePrompt?.trim() || c.images?.[0]?.prompt) && !hasValidImage(c.imageUrl))}
+                  className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    isGeneratingImages || isEnhancingPrompts || !styleConfig.cuts.some(c => (c.imagePrompt?.trim() || c.images?.[0]?.prompt) && !hasValidImage(c.imageUrl))
+                      ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                      : "bg-gradient-to-r from-orange-600 to-amber-600 text-white hover:from-orange-500 hover:to-amber-500"
+                  }`}
+                >
+                  {isGeneratingImages ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      生成中 {imageProgress.current}/{imageProgress.total}
+                    </>
+                  ) : styleConfig.cuts.every(c => !c.imagePrompt?.trim() && !c.images?.[0]?.prompt) ? (
+                    <>
+                      <span>🎨</span>
+                      プロンプトなし
+                    </>
+                  ) : styleConfig.cuts.filter(c => hasValidImage(c.imageUrl)).length === styleConfig.cuts.filter(c => c.imagePrompt?.trim() || c.images?.[0]?.prompt).length ? (
+                    <>
+                      <span>✓</span>
+                      生成完了
+                    </>
+                  ) : (
+                    <>
+                      <span>🎨</span>
+                      そのまま生成
+                    </>
+                  )}
+                </button>
+
+                {/* プロンプト強化 + 画像生成ボタン */}
+                <button
+                  onClick={handleEnhanceAndGenerateImages}
+                  disabled={isGeneratingImages || isEnhancingPrompts || !styleConfig.cuts.some(c => c.imagePrompt?.trim() || c.images?.[0]?.prompt)}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    isGeneratingImages || isEnhancingPrompts || !styleConfig.cuts.some(c => c.imagePrompt?.trim() || c.images?.[0]?.prompt)
+                      ? "bg-gray-700 text-gray-500 cursor-not-allowed"
+                      : "bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500"
+                  }`}
+                  title="AIでプロンプトを強化してから画像生成（シネマティック構図・日本人要素を追加）"
+                >
+                  {isEnhancingPrompts ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      強化中...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3 h-3" />
+                      強化して生成
+                    </>
+                  )}
+                </button>
+              </div>
             </section>
 
             {/* Audio Generation Section */}
@@ -2741,8 +2879,11 @@ export default function EditorPage() {
                 mainVoiceId={selectedVoiceId}
                 secondaryVoiceId={secondaryVoiceId}
                 ttsProvider={ttsProvider}
+                onTtsProviderChange={handleTtsProviderChange}
                 mainVoiceName={ttsProvider === "aivis" ? AIVIS_VOICE_OPTIONS.find(v => v.styleId === aivisStyleId)?.name : undefined}
                 secondaryVoiceName={ttsProvider === "aivis" ? AIVIS_VOICE_OPTIONS.find(v => v.styleId === aivisSecondaryStyleId)?.name : undefined}
+                imageModel={imageModel}
+                onImageModelChange={setImageModel}
               />
             )}
           </div>

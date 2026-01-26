@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Lip gradient -->
+    <linearGradient id="lipGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E88B8B"/>
+      <stop offset="50%" stop-color="#D46A6A"/>
+      <stop offset="100%" stop-color="#C45555"/>
+    </linearGradient>
+
+    <!-- Mouth interior -->
+    <radialGradient id="mouthInterior" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#4A1A1A"/>
+      <stop offset="100%" stop-color="#2A0A0A"/>
+    </radialGradient>
+
+    <!-- Teeth gradient -->
+    <linearGradient id="teethGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F0F0F0"/>
+    </linearGradient>
+
+    <!-- Tongue gradient -->
+    <radialGradient id="tongueGrad" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#E88080"/>
+      <stop offset="100%" stop-color="#C45555"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Mouth E: O sound (rounded opening) -->
+  <g>
+    <!-- Mouth opening -->
+    <ellipse cx="200" cy="300" rx="28" ry="32" fill="url(#mouthInterior)"/>
+
+    <!-- Upper lip (rounded for O shape) -->
+    <path d="M170 288 Q185 278, 200 280 Q215 278, 230 288 Q220 292, 200 290 Q180 292, 170 288"
+          fill="url(#lipGrad)"/>
+
+    <!-- Lower lip (rounded) -->
+    <path d="M170 312 Q180 325, 200 328 Q220 325, 230 312 Q220 316, 200 318 Q180 316, 170 312"
+          fill="url(#lipGrad)"/>
+
+    <!-- Upper teeth (partial view) -->
+    <path d="M178 290 L178 298 L190 298 L190 290 Z" fill="url(#teethGrad)"/>
+    <path d="M192 290 L192 300 L208 300 L208 290 Z" fill="url(#teethGrad)"/>
+    <path d="M210 290 L210 298 L222 298 L222 290 Z" fill="url(#teethGrad)"/>
+
+    <!-- Tongue visible in back -->
+    <ellipse cx="200" cy="315" rx="18" ry="10" fill="url(#tongueGrad)"/>
+
+    <!-- Lip highlight -->
+    <path d="M175 285 Q190 280, 200 280"
+          stroke="white" stroke-width="2" stroke-opacity="0.3" fill="none" stroke-linecap="round"/>
+
+    <!-- Mouth outline -->
+    <ellipse cx="200" cy="300" rx="30" ry="34" fill="none" stroke="#B84545" stroke-width="2"/>
+  </g>
+</svg>

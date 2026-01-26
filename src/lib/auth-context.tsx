@@ -73,7 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const checkAdminStatus = async (userId: string) => {
-        try {
+        // Temporarily disabled until admin_users table migration is applied
+        // TODO: Enable after running supabase/migrations/20260125_create_core_tables.sql
+        setIsAdmin(false);
+        return;
+
+        /* try {
             const { data } = await supabase
                 .from("admin_users")
                 .select("role")
@@ -82,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setIsAdmin(!!data);
         } catch {
             setIsAdmin(false);
-        }
+        } */
     };
 
     const signIn = async (email: string, password: string) => {

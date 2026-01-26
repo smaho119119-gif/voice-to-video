@@ -10,7 +10,7 @@ import { uploadAudioToStorage } from "@/lib/supabase";
 const execAsync = promisify(exec);
 
 // TTS Provider Types
-type TTSProvider = "openai" | "google" | "elevenlabs" | "gemini";
+type TTSProvider = "openai" | "google" | "elevenlabs" | "gemini" | "aivis";
 
 interface VoiceConfig {
     provider: TTSProvider;
@@ -19,7 +19,11 @@ interface VoiceConfig {
     pitch?: number;
     style?: string; // 演技指導: "疲れた声で、ゆっくりと" など
     model?: string; // Gemini TTS model: "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-tts", etc.
+    styleId?: number; // AivisSpeech style ID
 }
+
+// AivisSpeech/VOICEVOX settings
+const AIVIS_BASE_URL = process.env.AIVIS_URL || "http://localhost:10101";
 
 // Helper to get audio duration using ffprobe
 async function getAudioDuration(filePath: string): Promise<number> {
@@ -120,6 +124,14 @@ export async function POST(req: NextRequest) {
         // Debug: Log the voice configuration
         console.log("[Voice API] Provider:", provider, "Voice:", config?.voice);
 
+        // Gemini音声名 → Google音声名 マッピング
+        const geminiToGoogleVoiceMap: Record<string, string> = {
+            "Zephyr": "ja-JP-Wavenet-A", "Kore": "ja-JP-Wavenet-A",
+            "Leda": "ja-JP-Wavenet-A", "Aoede": "ja-JP-Wavenet-A",
+            "Puck": "ja-JP-Wavenet-D", "Charon": "ja-JP-Wavenet-D",
+            "Fenrir": "ja-JP-Wavenet-D", "Orus": "ja-JP-Wavenet-D",
+        };
+
         switch (provider) {
             case "openai":
                 return await generateOpenAIVoice(processedText, config);
@@ -128,7 +140,33 @@ export async function POST(req: NextRequest) {
             case "elevenlabs":
                 return await generateElevenLabsVoice(processedText, config);
             case "gemini":
-                return await generateGeminiVoice(processedText, config);
+                // ===== 3段階フォールバック: Gemini → Aivis → Google =====
+                try {
+                    return await generateGeminiVoice(processedText, config);
+                } catch (geminiError: any) {
+                    if (geminiError.message?.includes("429") || geminiError.message?.includes("quota") || geminiError.message?.includes("RESOURCE_EXHAUSTED")) {
+                        console.warn("[Voice API] Gemini quota exceeded, trying Aivis first...");
+                        try {
+                            // まずAivisを試行
+                            return await generateAivisVoice(processedText, config);
+                        } catch (aivisError: any) {
+                            // AivisもダメならGoogle TTSにフォールバック
+                            console.warn("[Voice API] Aivis also failed, falling back to Google TTS");
+                            const googleVoice = geminiToGoogleVoiceMap[config?.voice || "Zephyr"] || "ja-JP-Wavenet-A";
+                            return await generateGoogleVoice(processedText, { ...config, voice: googleVoice });
+                        }
+                    }
+                    throw geminiError;
+                }
+            case "aivis":
+                // ===== Aivis → Google フォールバック =====
+                try {
+                    return await generateAivisVoice(processedText, config);
+                } catch (aivisError: any) {
+                    console.warn("[Voice API] Aivis failed, falling back to Google TTS:", aivisError.message);
+                    const googleVoice = "ja-JP-Wavenet-A"; // デフォルト女性声
+                    return await generateGoogleVoice(processedText, { ...config, voice: googleVoice });
+                }
             default:
                 return NextResponse.json({ error: "Unknown TTS provider" }, { status: 400 });
         }
@@ -409,6 +447,64 @@ ${text}`;
     }
 }
 
+// AivisSpeech TTS (VOICEVOX互換、ローカル実行、完全無料)
+async function generateAivisVoice(text: string, config: VoiceConfig) {
+    const styleId = config?.styleId || 888753760; // デフォルト: まお - ノーマル
+    const speed = config?.speed || 1.0;
+
+    console.log("[AivisSpeech] Generating audio: styleId=", styleId, "text=", text.slice(0, 30));
+
+    try {
+        // Step 1: Get audio query
+        const queryResponse = await fetch(
+            `${AIVIS_BASE_URL}/audio_query?text=${encodeURIComponent(text)}&speaker=${styleId}`,
+            { method: "POST" }
+        );
+
+        if (!queryResponse.ok) {
+            throw new Error(`Audio query failed: ${queryResponse.status}`);
+        }
+
+        const audioQuery = await queryResponse.json();
+
+        // Apply speed setting
+        audioQuery.speedScale = speed;
+
+        // Step 2: Synthesize audio
+        const synthesisResponse = await fetch(
+            `${AIVIS_BASE_URL}/synthesis?speaker=${styleId}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(audioQuery)
+            }
+        );
+
+        if (!synthesisResponse.ok) {
+            throw new Error(`Synthesis failed: ${synthesisResponse.status}`);
+        }
+
+        const audioBuffer = await synthesisResponse.arrayBuffer();
+        const base64Audio = Buffer.from(audioBuffer).toString("base64");
+
+        const { url: audioUrl, duration } = await saveAudioLocally(base64Audio, "wav");
+
+        console.log("[AivisSpeech] Audio generated:", audioUrl, "duration:", duration);
+
+        return NextResponse.json({
+            success: true,
+            provider: "aivis",
+            audioUrl,
+            duration,
+            format: "wav",
+            voice: `style_${styleId}`
+        });
+    } catch (error: any) {
+        console.error("AivisSpeech Error:", error);
+        throw new Error(`AivisSpeech failed: ${error.message}`);
+    }
+}
+
 // GET endpoint to list available voices
 export async function GET() {
     return NextResponse.json({
@@ -449,6 +545,50 @@ export async function GET() {
                 },
                 requiresKey: "GEMINI_API_KEY",
                 available: !!process.env.GEMINI_API_KEY
+            },
+            aivis: {
+                name: "AivisSpeech（ローカル）",
+                description: "完全無料・ローカル実行。感情豊かな日本語音声。VOICEVOX互換。",
+                voices: {
+                    // morioki
+                    "497929760": "morioki - ノーマル",
+                    // にせ
+                    "1937616896": "にせ - ノーマル",
+                    // まい
+                    "1431611904": "まい - ノーマル",
+                    // まお（6スタイル）
+                    "888753760": "まお - ノーマル",
+                    "888753761": "まお - ふつー",
+                    "888753762": "まお - あまあま",
+                    "888753763": "まお - おちつき",
+                    "888753764": "まお - からかい",
+                    "888753765": "まお - せつなめ",
+                    // るな
+                    "345585728": "るな - ノーマル",
+                    // 凛音エル（5スタイル）
+                    "1388823424": "凛音エル - ノーマル",
+                    "1388823425": "凛音エル - Angry",
+                    "1388823426": "凛音エル - Fear",
+                    "1388823427": "凛音エル - Happy",
+                    "1388823428": "凛音エル - Sad",
+                    // 花音
+                    "1325133120": "花音 - ノーマル",
+                    // 阿井田 茂（7スタイル・男性声）
+                    "1310138976": "阿井田 茂 - ノーマル",
+                    "1310138977": "阿井田 茂 - Calm",
+                    "1310138978": "阿井田 茂 - Far",
+                    "1310138979": "阿井田 茂 - Heavy",
+                    "1310138980": "阿井田 茂 - Mid",
+                    "1310138981": "阿井田 茂 - Shout",
+                    "1310138982": "阿井田 茂 - Surprise",
+                    // 黄金笑_T2モデル（3スタイル）
+                    "1618811328": "黄金笑 - ノーマル",
+                    "1618811329": "黄金笑 - Negative",
+                    "1618811330": "黄金笑 - Positive"
+                },
+                requiresKey: null,
+                available: true,
+                note: "ローカルサーバー(localhost:10101)が必要"
             }
         }
     });

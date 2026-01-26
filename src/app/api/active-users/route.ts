@@ -12,7 +12,14 @@ const SESSION_TIMEOUT_MINUTES = 5;
 
 export async function POST(req: NextRequest) {
     try {
-        const { userId } = await req.json();
+        // Temporarily disabled until active_sessions table migration is applied
+        // TODO: Enable after running supabase/migrations/20260125_create_core_tables.sql
+        return NextResponse.json({
+            success: true,
+            activeUsers: 1, // Return dummy value
+        });
+
+        /* const { userId } = await req.json();
 
         // Get client IP
         const forwarded = req.headers.get("x-forwarded-for");
@@ -37,9 +44,9 @@ export async function POST(req: NextRequest) {
 
         if (upsertError) {
             console.error("Failed to upsert session:", upsertError);
-        }
+        } */
 
-        // Update page views for existing session
+        /* // Update page views for existing session
         await supabaseAdmin
             .from("active_sessions")
             .update({
@@ -103,7 +110,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
             success: true,
             activeUsers: count || 0,
-        });
+        }); */
     } catch (error: any) {
         console.error("Active users tracking error:", error);
         return NextResponse.json(
@@ -114,7 +121,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-    try {
+    // Temporarily disabled until active_sessions table migration is applied
+    // TODO: Enable after running supabase/migrations/20260125_create_core_tables.sql
+    return NextResponse.json({ activeUsers: 1 }); // Return dummy value
+
+    /* try {
         const now = new Date();
         const timeoutThreshold = new Date(now.getTime() - SESSION_TIMEOUT_MINUTES * 60 * 1000);
 
@@ -134,5 +145,5 @@ export async function GET() {
     } catch (error: any) {
         console.error("Active users fetch error:", error);
         return NextResponse.json({ activeUsers: 0 });
-    }
+    } */
 }

@@ -13,6 +13,13 @@ import type { SceneAnimation, VideoAnimation } from "@/types/animation";
 // Transition types
 export type TransitionType = "fade" | "slide" | "zoom" | "wipe";
 
+// 文字タイミング情報（AivisSpeech使用時のみ）
+export interface CharTiming {
+    char: string;
+    start: number;  // 秒
+    end: number;    // 秒
+}
+
 // Aspect ratio type
 export type AspectRatio = "16:9" | "9:16";
 
@@ -37,6 +44,7 @@ export interface Scene {
     duration: number;
     avatar_script: string;
     subtitle: string;
+    mainText?: string; // 画面中央に大きく表示するテキスト（タイプライター等）
     image_prompt: string;
     imageUrl?: string;
     audioUrl?: string;
@@ -63,6 +71,8 @@ export interface Scene {
     assets?: any[];
     // Text display mode
     textDisplayMode?: TextDisplayMode;
+    // Character timing for word-level sync (AivisSpeech)
+    charTimings?: CharTiming[];
 }
 
 export interface BGMConfig {

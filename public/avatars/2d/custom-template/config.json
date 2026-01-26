@@ -1,0 +1,34 @@
+{
+  "name": "カスタムキャラ",
+  "description": "nanobanana pro等で生成したオリジナルキャラクター",
+  "isTemplate": true,
+  "format": "png",
+  "base": "base.png",
+  "mouths": {
+    "A": "mouth-A.png",
+    "B": "mouth-B.png",
+    "C": "mouth-C.png",
+    "D": "mouth-D.png",
+    "E": "mouth-E.png",
+    "F": "mouth-F.png",
+    "G": "mouth-G.png",
+    "H": "mouth-H.png",
+    "X": "mouth-X.png"
+  },
+  "eyes": {
+    "open": "eyes-open.png",
+    "half": "eyes-half.png",
+    "closed": "eyes-closed.png"
+  },
+  "blink": {
+    "enabled": true,
+    "intervalMin": 2.0,
+    "intervalMax": 5.0,
+    "duration": 0.15
+  },
+  "size": {
+    "width": 512,
+    "height": 512
+  },
+  "fps": 30
+}

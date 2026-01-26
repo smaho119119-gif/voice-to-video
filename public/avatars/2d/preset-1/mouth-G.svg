@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Lip gradient -->
+    <linearGradient id="lipGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E88B8B"/>
+      <stop offset="50%" stop-color="#D46A6A"/>
+      <stop offset="100%" stop-color="#C45555"/>
+    </linearGradient>
+
+    <!-- Mouth interior -->
+    <radialGradient id="mouthInterior" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#3A1515"/>
+      <stop offset="100%" stop-color="#2A0A0A"/>
+    </radialGradient>
+
+    <!-- Teeth gradient -->
+    <linearGradient id="teethGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F0F0F0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mouth G: Open smile showing teeth -->
+  <g>
+    <!-- Mouth opening -->
+    <ellipse cx="200" cy="298" rx="45" ry="28" fill="url(#mouthInterior)"/>
+
+    <!-- Upper lip -->
+    <path d="M152 285 Q175 275, 200 277 Q225 275, 248 285 Q225 290, 200 288 Q175 290, 152 285"
+          fill="url(#lipGrad)"/>
+
+    <!-- Lower lip -->
+    <path d="M152 312 Q170 325, 200 328 Q230 325, 248 312 Q230 316, 200 318 Q170 316, 152 312"
+          fill="url(#lipGrad)"/>
+
+    <!-- Upper teeth row -->
+    <rect x="158" y="287" width="84" height="14" rx="2" fill="url(#teethGrad)"/>
+
+    <!-- Individual teeth -->
+    <line x1="173" y1="287" x2="173" y2="301" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="188" y1="287" x2="188" y2="301" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="200" y1="287" x2="200" y2="301" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="212" y1="287" x2="212" y2="301" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="227" y1="287" x2="227" y2="301" stroke="#E8E8E8" stroke-width="0.5"/>
+
+    <!-- Lower teeth (partially visible) -->
+    <rect x="165" y="310" width="70" height="8" rx="1" fill="url(#teethGrad)" opacity="0.9"/>
+
+    <!-- Upper lip highlight -->
+    <path d="M160 282 Q180 277, 200 277"
+          stroke="white" stroke-width="2" stroke-opacity="0.3" fill="none" stroke-linecap="round"/>
+
+    <!-- Smile lines -->
+    <path d="M150 290 Q147 298, 150 306" stroke="#D4A68C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M250 290 Q253 298, 250 306" stroke="#D4A68C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Mouth outline -->
+    <ellipse cx="200" cy="298" rx="48" ry="30" fill="none" stroke="#B84545" stroke-width="1.5"/>
+  </g>
+</svg>

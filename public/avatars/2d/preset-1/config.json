@@ -1,0 +1,32 @@
+{
+  "name": "シンプルキャラ",
+  "description": "基本的な2Dアバター（瞬き対応）",
+  "base": "base.svg",
+  "mouths": {
+    "A": "mouth-A.svg",
+    "B": "mouth-B.svg",
+    "C": "mouth-C.svg",
+    "D": "mouth-D.svg",
+    "E": "mouth-E.svg",
+    "F": "mouth-F.svg",
+    "G": "mouth-G.svg",
+    "H": "mouth-H.svg",
+    "X": "mouth-X.svg"
+  },
+  "eyes": {
+    "open": "eyes-open.svg",
+    "half": "eyes-half.svg",
+    "closed": "eyes-closed.svg"
+  },
+  "blink": {
+    "enabled": true,
+    "intervalMin": 2.0,
+    "intervalMax": 5.0,
+    "duration": 0.15
+  },
+  "size": {
+    "width": 800,
+    "height": 800
+  },
+  "fps": 30
+}

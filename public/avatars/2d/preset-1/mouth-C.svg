@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Lip gradient -->
+    <linearGradient id="lipGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E88B8B"/>
+      <stop offset="50%" stop-color="#D46A6A"/>
+      <stop offset="100%" stop-color="#C45555"/>
+    </linearGradient>
+
+    <!-- Mouth interior -->
+    <radialGradient id="mouthInterior" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#3A1515"/>
+      <stop offset="100%" stop-color="#2A0A0A"/>
+    </radialGradient>
+
+    <!-- Teeth gradient -->
+    <linearGradient id="teethGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F0F0F0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mouth C: EE sound (wide smile showing teeth) -->
+  <g>
+    <!-- Mouth opening -->
+    <ellipse cx="200" cy="298" rx="52" ry="18" fill="url(#mouthInterior)"/>
+
+    <!-- Upper lip -->
+    <path d="M145 290 Q175 282, 200 283 Q225 282, 255 290 Q230 295, 200 293 Q170 295, 145 290"
+          fill="url(#lipGrad)"/>
+
+    <!-- Lower lip -->
+    <path d="M145 306 Q170 315, 200 318 Q230 315, 255 306 Q230 310, 200 311 Q170 310, 145 306"
+          fill="url(#lipGrad)"/>
+
+    <!-- Upper teeth -->
+    <rect x="155" y="290" width="90" height="12" rx="2" fill="url(#teethGrad)"/>
+
+    <!-- Teeth lines -->
+    <line x1="170" y1="290" x2="170" y2="302" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="185" y1="290" x2="185" y2="302" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="200" y1="290" x2="200" y2="302" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="215" y1="290" x2="215" y2="302" stroke="#E8E8E8" stroke-width="0.5"/>
+    <line x1="230" y1="290" x2="230" y2="302" stroke="#E8E8E8" stroke-width="0.5"/>
+
+    <!-- Upper lip highlight -->
+    <path d="M155 287 Q175 283, 200 283"
+          stroke="white" stroke-width="2" stroke-opacity="0.3" fill="none" stroke-linecap="round"/>
+
+    <!-- Smile lines -->
+    <path d="M145 290 Q142 295, 145 300" stroke="#D4A68C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <path d="M255 290 Q258 295, 255 300" stroke="#D4A68C" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Mouth outline -->
+    <path d="M145 298 Q200 280, 255 298 Q200 320, 145 298" fill="none" stroke="#B84545" stroke-width="1.5"/>
+  </g>
+</svg>

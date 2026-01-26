@@ -334,6 +334,13 @@ export interface QuizChoice {
 // テキスト表示モード
 export type TextDisplayMode = "instant" | "sync-typewriter" | "word-bounce";
 
+// 文字タイミング情報（AivisSpeech使用時のみ）
+export interface CharTiming {
+  char: string;
+  start: number;  // 秒
+  end: number;    // 秒
+}
+
 // テキスト表示モードオプション（UI用）
 export const TEXT_DISPLAY_MODE_OPTIONS: { value: TextDisplayMode; label: string; icon: string; description: string }[] = [
   { value: "word-bounce", label: "バウンス", icon: "🎯", description: "単語ごとにバウンス表示" },
@@ -395,6 +402,7 @@ export interface CutConfig {
   voiceUrl?: string;        // 生成された音声URL
   speaker?: SpeakerType;    // 話者（複数話者対応）
   voiceId?: string;         // Gemini TTS 声ID（Zephyr, Puck等）
+  charTimings?: CharTiming[]; // 文字タイミング情報（AivisSpeech使用時のみ）
 
   // ④ 画像（複数可）
   images: SceneImage[];

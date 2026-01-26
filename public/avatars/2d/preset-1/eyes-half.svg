@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Eye white gradient -->
+    <radialGradient id="eyeWhite" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F0F0F0"/>
+    </radialGradient>
+
+    <!-- Iris gradient -->
+    <radialGradient id="irisGrad" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#6B5B4F"/>
+      <stop offset="40%" stop-color="#4A3C31"/>
+      <stop offset="100%" stop-color="#2C1810"/>
+    </radialGradient>
+
+    <!-- Eye shadow -->
+    <linearGradient id="eyeShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#D4A68C" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Eyelid skin -->
+    <linearGradient id="lidSkin" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFDAB9"/>
+      <stop offset="100%" stop-color="#F5C6A5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Left eye (half closed) -->
+  <g>
+    <!-- Eye shadow above -->
+    <ellipse cx="130" cy="160" rx="38" ry="12" fill="url(#eyeShadow)"/>
+
+    <!-- Partial eye white (clipped by eyelid) -->
+    <ellipse cx="130" cy="168" rx="35" ry="18" fill="url(#eyeWhite)"/>
+    <ellipse cx="130" cy="168" rx="35" ry="18" fill="none" stroke="#C4A68C" stroke-width="1.5"/>
+
+    <!-- Partial iris visible -->
+    <circle cx="135" cy="170" r="14" fill="url(#irisGrad)"/>
+
+    <!-- Partial pupil -->
+    <circle cx="135" cy="170" r="7" fill="#1A1A1A"/>
+
+    <!-- Small highlight -->
+    <ellipse cx="140" cy="165" rx="4" ry="3" fill="white" opacity="0.8"/>
+
+    <!-- Upper eyelid covering top -->
+    <path d="M95 165 Q130 155, 165 165 L165 150 Q130 140, 95 150 Z" fill="url(#lidSkin)"/>
+
+    <!-- Eyelid crease -->
+    <path d="M95 155 Q130 145, 165 155" stroke="#D4A68C" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+    <!-- Upper eyelid line -->
+    <path d="M95 165 Q130 155, 165 165" stroke="#4E342E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Right eye (half closed) -->
+  <g>
+    <!-- Eye shadow above -->
+    <ellipse cx="270" cy="160" rx="38" ry="12" fill="url(#eyeShadow)"/>
+
+    <!-- Partial eye white -->
+    <ellipse cx="270" cy="168" rx="35" ry="18" fill="url(#eyeWhite)"/>
+    <ellipse cx="270" cy="168" rx="35" ry="18" fill="none" stroke="#C4A68C" stroke-width="1.5"/>
+
+    <!-- Partial iris visible -->
+    <circle cx="265" cy="170" r="14" fill="url(#irisGrad)"/>
+
+    <!-- Partial pupil -->
+    <circle cx="265" cy="170" r="7" fill="#1A1A1A"/>
+
+    <!-- Small highlight -->
+    <ellipse cx="270" cy="165" rx="4" ry="3" fill="white" opacity="0.8"/>
+
+    <!-- Upper eyelid covering top -->
+    <path d="M235 165 Q270 155, 305 165 L305 150 Q270 140, 235 150 Z" fill="url(#lidSkin)"/>
+
+    <!-- Eyelid crease -->
+    <path d="M235 155 Q270 145, 305 155" stroke="#D4A68C" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+    <!-- Upper eyelid line -->
+    <path d="M235 165 Q270 155, 305 165" stroke="#4E342E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

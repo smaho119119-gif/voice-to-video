@@ -157,7 +157,8 @@ export async function POST(req: NextRequest) {
             summary: "要約・まとめ形式のスタイル"
         };
 
-        const sceneCount = Math.max(3, Math.min(10, Math.ceil(targetDuration / 10)));
+        // 最小3シーン、最大25シーン（1シーンあたり約7-10秒）
+        const sceneCount = Math.max(3, Math.min(25, Math.ceil(targetDuration / 8)));
 
         const prompt = `
 あなたはプロの動画ディレクター兼脚本家です。以下のWebページの内容を元に、ショート動画の完全な台本を作成してください。

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Lip gradient -->
+    <linearGradient id="lipGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E88B8B"/>
+      <stop offset="50%" stop-color="#D46A6A"/>
+      <stop offset="100%" stop-color="#C45555"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mouth X: Neutral/rest (relaxed, slight smile) -->
+  <g>
+    <!-- Upper lip -->
+    <path d="M155 294 Q175 288, 200 290 Q225 288, 245 294 Q225 296, 200 295 Q175 296, 155 294"
+          fill="url(#lipGrad)"/>
+
+    <!-- Lower lip -->
+    <path d="M155 296 Q175 298, 200 299 Q225 298, 245 296 Q225 303, 200 305 Q175 303, 155 296"
+          fill="url(#lipGrad)"/>
+
+    <!-- Lip line (subtle) -->
+    <path d="M158 296 Q175 299, 200 300 Q225 299, 242 296"
+          stroke="#B05050" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+    <!-- Upper lip highlight -->
+    <path d="M165 291 Q185 289, 200 290"
+          stroke="white" stroke-width="2" stroke-opacity="0.25" fill="none" stroke-linecap="round"/>
+
+    <!-- Lower lip highlight -->
+    <path d="M180 301 Q200 303, 220 301"
+          stroke="white" stroke-width="1.5" stroke-opacity="0.15" fill="none" stroke-linecap="round"/>
+
+    <!-- Cupid's bow detail -->
+    <path d="M190 290 Q195 287, 200 290 Q205 287, 210 290"
+          stroke="#C45555" stroke-width="0.8" fill="none"/>
+
+    <!-- Subtle corner shadows -->
+    <path d="M155 295 Q153 298, 155 301" stroke="#D4A68C" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.5"/>
+    <path d="M245 295 Q247 298, 245 301" stroke="#D4A68C" stroke-width="1" fill="none" stroke-linecap="round" opacity="0.5"/>
+  </g>
+</svg>

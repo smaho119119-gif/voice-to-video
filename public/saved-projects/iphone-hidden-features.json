@@ -1,0 +1,295 @@
+{
+  "title": "マジ！？iPhone隠し機能５選！",
+  "description": "知って得するiPhone裏技を大公開！",
+  "scenes": [
+    {
+      "scene_index": 1,
+      "duration": 6,
+      "main_text": {
+        "type": "title",
+        "lines": [
+          "え、マジ！？",
+          "iPhone隠し機能５選"
+        ]
+      },
+      "subtitle": "裏技大公開！",
+      "voice_text": "え、マジ！？知って得する！iPhoneの隠し機能５選、大公開！",
+      "voice_style": "明るく元気に、視聴者の興味を引くように、少しテンションを上げて",
+      "image_prompts": [
+        "日本の渋谷スクランブル交差点、夕暮れ時、多くの人が行き交う中、一人の若い女性がiPhoneを手に笑顔で立っている、背景はぼかし、ネオンライトが輝き、映画のような雰囲気、カメラはローアングルからズームアップ、鮮やかな色彩、16:9"
+      ],
+      "image_effect": "zoomIn",
+      "text_animation": "slideUp",
+      "transition": "zoom",
+      "emotion": "excited",
+      "emphasis_words": [
+        "iPhone",
+        "隠し機能",
+        "５選"
+      ],
+      "sound_effects": [
+        {
+          "type": "transition",
+          "keyword": "whoosh",
+          "timing": "start",
+          "volume": 0.5
+        }
+      ]
+    },
+    {
+      "scene_index": 2,
+      "duration": 8,
+      "main_text": {
+        "type": "bullet",
+        "lines": [
+          "1. バッテリー残量%",
+          "2. 集中モード",
+          "3. テキストスキャン",
+          "4. 翻訳",
+          "5. 音声コントロール"
+        ]
+      },
+      "subtitle": "今日の裏技",
+      "voice_text": "今日の裏技はこれ！バッテリー残量表示、集中モード、テキストスキャン、翻訳機能、そして音声コントロール！",
+      "voice_style": "テンポよく軽快に、ワクワクした気持ちで",
+      "image_prompts": [
+        "日本のカフェで、若い女性がiPhoneの画面を見ながら微笑んでいる、画面にはバッテリー残量が表示されている、窓から自然光が差し込み、温かみのある色調、背景はぼかし、アイレベルのカメラアングル、16:9"
+      ],
+      "image_effect": "panLeft",
+      "text_animation": "typewriter",
+      "transition": "fade",
+      "emotion": "happy",
+      "emphasis_words": [
+        "バッテリー",
+        "集中モード",
+        "翻訳"
+      ],
+      "sound_effects": [
+        {
+          "type": "action",
+          "keyword": "keyboard typing",
+          "timing": "throughout",
+          "volume": 0.2
+        }
+      ]
+    },
+    {
+      "scene_index": 3,
+      "duration": 7,
+      "main_text": {
+        "type": "highlight",
+        "lines": [
+          "バッテリー残量",
+          "％表示",
+          "超簡単！"
+        ]
+      },
+      "subtitle": "設定方法",
+      "voice_text": "まずはバッテリー残量をパーセント表示にする方法！設定は超簡単！",
+      "voice_style": "落ち着いて穏やかに、わかりやすく丁寧に説明するように",
+      "image_prompts": [
+        "日本のリビングルームで、若い女性がiPhoneの設定画面を見ながら説明している、バッテリーのアイコンが大きく表示され、操作手順が分かりやすく示されている、自然光が差し込み、柔らかい影、アイレベルのカメラアングル、16:9"
+      ],
+      "image_effect": "zoomIn",
+      "text_animation": "bounce",
+      "transition": "zoom",
+      "emotion": "neutral",
+      "emphasis_words": [
+        "バッテリー",
+        "パーセント",
+        "簡単"
+      ],
+      "sound_effects": [
+        {
+          "type": "action",
+          "keyword": "click",
+          "timing": "middle",
+          "volume": 0.4
+        }
+      ]
+    },
+    {
+      "scene_index": 4,
+      "duration": 9,
+      "main_text": {
+        "type": "highlight",
+        "lines": [
+          "集中モード",
+          "通知を",
+          "カスタマイズ"
+        ]
+      },
+      "subtitle": "仕事効率UP",
+      "voice_text": "お次は集中モード！通知をカスタマイズして、仕事効率を爆上げしよう！",
+      "voice_style": "少し興奮気味に、友達に話しかけるように",
+      "image_prompts": [
+        "日本のオフィスで、若い女性が集中モードを設定しているiPhoneの画面を見つめている、周囲は少しぼかし、集中線のようなエフェクトが加えられている、デスクには書類や文房具が散らばり、仕事中の雰囲気を演出、アイレベルのカメラアングル、16:9"
+      ],
+      "image_effect": "panRight",
+      "text_animation": "typewriter",
+      "transition": "fade",
+      "emotion": "happy",
+      "emphasis_words": [
+        "集中モード",
+        "通知",
+        "効率"
+      ],
+      "sound_effects": [
+        {
+          "type": "action",
+          "keyword": "click",
+          "timing": "middle",
+          "volume": 0.4
+        }
+      ]
+    },
+    {
+      "scene_index": 5,
+      "duration": 8,
+      "main_text": {
+        "type": "highlight",
+        "lines": [
+          "テキストスキャン",
+          "書類を",
+          "データ化"
+        ]
+      },
+      "subtitle": "便利すぎる",
+      "voice_text": "テキストスキャン機能！書類を簡単にデータ化できて、マジ便利！",
+      "voice_style": "驚きを込めて、「えっ！？」という感情を乗せて",
+      "image_prompts": [
+        "日本の図書館で、若い女性がiPhoneで書類をスキャンしている、スキャンされたテキストがiPhoneの画面に表示され、周囲はぼかし、奥行きのある構図、自然光が差し込み、温かみのある色調、ローアングルのカメラアングル、16:9"
+      ],
+      "image_effect": "zoomIn",
+      "text_animation": "bounce",
+      "transition": "zoom",
+      "emotion": "excited",
+      "emphasis_words": [
+        "テキストスキャン",
+        "書類",
+        "データ"
+      ],
+      "sound_effects": [
+        {
+          "type": "action",
+          "keyword": "camera shutter",
+          "timing": "middle",
+          "volume": 0.5
+        }
+      ]
+    },
+    {
+      "scene_index": 6,
+      "duration": 7,
+      "main_text": {
+        "type": "highlight",
+        "lines": [
+          "翻訳機能",
+          "海外旅行",
+          "必須"
+        ]
+      },
+      "subtitle": "旅行のお供に",
+      "voice_text": "翻訳機能は海外旅行の必需品！これがあれば言葉の壁も怖くない！",
+      "voice_style": "明るく元気に、少し旅行気分を混ぜて",
+      "image_prompts": [
+        "日本の空港で、若い女性がiPhoneの翻訳アプリを使って外国人観光客とコミュニケーションを取っている、背景には飛行機が写り込み、旅の雰囲気を演出、鮮やかな色彩、アイレベルのカメラアングル、16:9"
+      ],
+      "image_effect": "panLeft",
+      "text_animation": "typewriter",
+      "transition": "fade",
+      "emotion": "happy",
+      "emphasis_words": [
+        "翻訳機能",
+        "海外旅行",
+        "必須"
+      ],
+      "sound_effects": [
+        {
+          "type": "ambient",
+          "keyword": "airport ambience",
+          "timing": "throughout",
+          "volume": 0.2
+        }
+      ]
+    },
+    {
+      "scene_index": 7,
+      "duration": 8,
+      "main_text": {
+        "type": "highlight",
+        "lines": [
+          "音声コントロール",
+          "ハンズフリー",
+          "操作"
+        ]
+      },
+      "subtitle": "未来感",
+      "voice_text": "最後は音声コントロール！ハンズフリーでiPhoneを操作できる、未来感！",
+      "voice_style": "少し大げさに、未来的なイメージで",
+      "image_prompts": [
+        "日本の未来的な都市で、若い女性がiPhoneに話しかけて操作している、周囲は高層ビルが立ち並び、空にはドローンが飛び交い、SF映画のような雰囲気、クールトーン、ローアングルのカメラアングル、16:9"
+      ],
+      "image_effect": "zoomIn",
+      "text_animation": "bounce",
+      "transition": "zoom",
+      "emotion": "excited",
+      "emphasis_words": [
+        "音声コントロール",
+        "ハンズフリー",
+        "未来感"
+      ],
+      "sound_effects": [
+        {
+          "type": "action",
+          "keyword": "futuristic sound",
+          "timing": "middle",
+          "volume": 0.5
+        }
+      ]
+    },
+    {
+      "scene_index": 8,
+      "duration": 6,
+      "main_text": {
+        "type": "title",
+        "lines": [
+          "試してみてね！",
+          "チャンネル登録",
+          "よろしく！"
+        ]
+      },
+      "subtitle": "また見てね！",
+      "voice_text": "さあ、みんなも試してみてね！チャンネル登録、よろしく！",
+      "voice_style": "親しみを込めて、背中を押すように、明るく前向きに",
+      "image_prompts": [
+        "日本のリビングルームで、若い女性が笑顔で視聴者に手を振っている、背景には窓から夕日が差し込み、温かみのある色調、テーブルにはコーヒーカップが置かれ、リラックスした雰囲気、アイレベルのカメラアングル、16:9"
+      ],
+      "image_effect": "zoomOut",
+      "text_animation": "fadeIn",
+      "transition": "dissolve",
+      "emotion": "happy",
+      "emphasis_words": [
+        "試してみて",
+        "チャンネル登録",
+        "よろしく"
+      ],
+      "sound_effects": [
+        {
+          "type": "emotion",
+          "keyword": "success chime",
+          "timing": "end",
+          "volume": 0.5
+        }
+      ]
+    }
+  ],
+  "total_duration": 59,
+  "tags": [
+    "iPhone",
+    "裏技",
+    "便利機能",
+    "スマホ",
+    "ライフハック"
+  ]
+}
