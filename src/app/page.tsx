@@ -1281,6 +1281,17 @@ export default function Home() {
                             <span className="hidden sm:inline">エディター</span>
                         </Link>
 
+                        {/* Studio link */}
+                        <a
+                            href="http://localhost:3000"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 px-3 py-1.5 bg-orange-500/20 border border-orange-500/30 rounded-lg text-xs text-orange-300 hover:bg-orange-500/30 transition-colors"
+                        >
+                            <Play className="w-3 h-3" />
+                            <span className="hidden sm:inline">Studio</span>
+                        </a>
+
                         {/* Admin link */}
                         {isAdmin && (
                             <Button variant="ghost" size="sm" onClick={() => router.push("/admin")} className="text-slate-300">
