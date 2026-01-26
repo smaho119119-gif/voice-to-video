@@ -9,6 +9,7 @@ import {
     ArrowRight, FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 
 // Animated section wrapper
 function AnimatedSection({ children, className = "", delay = 0 }: {
@@ -33,44 +34,68 @@ function AnimatedSection({ children, className = "", delay = 0 }: {
 }
 
 // Feature card with hover animation
-function FeatureCard({ icon: Icon, title, description, delay }: {
+function FeatureCard({ icon: Icon, title, description, delay, image }: {
     icon: React.ElementType;
     title: string;
     description: string;
     delay: number;
+    image?: string;
 }) {
     return (
         <AnimatedSection delay={delay}>
             <motion.div
                 whileHover={{ scale: 1.05, y: -5 }}
-                className="p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10 backdrop-blur-sm"
+                className="group relative overflow-hidden p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10 backdrop-blur-sm h-full"
             >
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-4">
-                    <Icon className="w-6 h-6 text-white" />
+                {image && (
+                    <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity">
+                        <Image
+                            src={image}
+                            alt={title}
+                            fill
+                            className="object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent" />
+                    </div>
+                )}
+                <div className="relative z-10">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg shadow-purple-500/20">
+                        <Icon className="w-6 h-6 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
+                    <p className="text-slate-400 text-sm leading-relaxed">{description}</p>
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">{description}</p>
             </motion.div>
         </AnimatedSection>
     );
 }
 
 // Step card for workflow section
-function StepCard({ number, title, description, delay }: {
+function StepCard({ number, title, description, delay, image }: {
     number: number;
     title: string;
     description: string;
     delay: number;
+    image: string;
 }) {
     return (
         <AnimatedSection delay={delay}>
-            <div className="relative">
-                <div className="absolute -left-4 top-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+            <div className="relative group">
+                <div className="absolute -left-4 top-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm z-20 shadow-lg shadow-blue-500/30">
                     {number}
                 </div>
-                <div className="pl-8">
-                    <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
-                    <p className="text-slate-400 text-sm">{description}</p>
+                <div className="pl-6 pt-2">
+                    <div className="relative aspect-square mb-6 rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-purple-900/20">
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-600/10 z-10" />
+                        <Image
+                            src={image}
+                            alt={title}
+                            fill
+                            className="object-cover transition-transform duration-700 group-hover:scale-110"
+                        />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-3">{title}</h3>
+                    <p className="text-slate-400 text-sm leading-relaxed">{description}</p>
                 </div>
             </div>
         </AnimatedSection>
@@ -205,16 +230,25 @@ export default function LandingPage() {
                         initial={{ opacity: 0, y: 50 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 1, delay: 0.5 }}
-                        className="mt-16 relative"
+                        className="mt-16 relative perspective-1000"
                     >
-                        <div className="relative rounded-2xl overflow-hidden border border-white/20 shadow-2xl shadow-purple-500/20">
-                            <div className="aspect-video bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                                <div className="text-center">
-                                    <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center mx-auto mb-4 cursor-pointer hover:bg-white/20 transition-colors">
-                                        <Play className="w-8 h-8 text-white ml-1" />
-                                    </div>
-                                    <p className="text-slate-400">クリックしてデモを見る</p>
+                        <div className="relative rounded-xl overflow-hidden border border-white/20 shadow-2xl shadow-purple-500/20 group">
+                            <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent z-10" />
+                            <Image
+                                src="/images/hero_ui_mockup.png"
+                                alt="Video AI Dashboard Interface"
+                                width={1280}
+                                height={720}
+                                className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-105"
+                                priority
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center z-20">
+                                <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center cursor-pointer hover:bg-white/20 hover:scale-110 transition-all duration-300 border border-white/20 shadow-xl shadow-purple-500/30">
+                                    <Play className="w-8 h-8 text-white ml-1 fill-white" />
                                 </div>
+                            </div>
+                            <div className="absolute bottom-6 left-0 right-0 text-center z-20">
+                                <p className="text-slate-300 font-medium tracking-wide">クリックしてデモを見る</p>
                             </div>
                         </div>
                         {/* Glow effect */}
@@ -240,24 +274,28 @@ export default function LandingPage() {
                             title="AI台本生成"
                             description="テーマを入力するだけで、構成の取れた魅力的な台本をAIが自動生成します。"
                             delay={0}
+                            image="/images/feature_text_to_video.png"
                         />
                         <FeatureCard
                             icon={ImageIcon}
                             title="画像自動生成"
                             description="各シーンに最適な画像をAIが自動で生成。スタイルも選べます。"
                             delay={0.1}
+                            image="/images/feature_image_generation.png"
                         />
                         <FeatureCard
                             icon={Mic}
                             title="AIナレーション"
                             description="自然な日本語音声でナレーションを自動生成。複数の声から選択可能。"
                             delay={0.2}
+                            image="/images/feature_ai_narration.png"
                         />
                         <FeatureCard
                             icon={Video}
                             title="動画自動編集"
                             description="トランジション、字幕、BGMまで自動で追加。プロ品質の動画が完成。"
                             delay={0.3}
+                        // Using the processing visual again or a generic one if needed
                         />
                     </div>
                 </div>
@@ -277,18 +315,21 @@ export default function LandingPage() {
                             title="テーマを入力"
                             description="作りたい動画のテーマやキーワードを入力するだけ。URLからの自動抽出も可能。"
                             delay={0}
+                            image="/images/step_input_ui.png"
                         />
                         <StepCard
                             number={2}
                             title="AIが自動生成"
                             description="台本、画像、ナレーション、編集をAIが自動で実行。リアルタイムでプレビュー確認。"
                             delay={0.1}
+                            image="/images/step_processing_visual.png"
                         />
                         <StepCard
                             number={3}
                             title="ダウンロード"
                             description="完成した動画をダウンロード。YouTube Shorts、TikTok、Instagram Reelsに最適化。"
                             delay={0.2}
+                            image="/images/step_result_mobile.png"
                         />
                     </div>
 
