@@ -30,28 +30,28 @@ INSERT INTO vg_page_content (section_key, content) VALUES
                 "id": "script-ai",
                 "title": "① 台本AI",
                 "description": "Gemini/GPT-4が視聴者を引きつける構成の台本を自動生成。フック→本題→まとめの流れで離脱を防ぎます。",
-                "image": "/images/feature-script-ai.png",
+                "image": "/images/feature_text_to_video.png",
                 "gradient": "from-blue-500 to-purple-600"
             },
             {
                 "id": "image-ai",
                 "title": "② 画像生成AI",
                 "description": "各シーンの内容に合わせた画像をDALL-E/Imagen等で自動生成。アニメ風・写実風など画風も選べます。",
-                "image": "/images/feature-image-ai.png",
+                "image": "/images/feature_image_generation.png",
                 "gradient": "from-purple-500 to-pink-600"
             },
             {
                 "id": "voice-ai",
                 "title": "③ 音声合成AI",
                 "description": "Google/ElevenLabs/Gemini TTSで自然な日本語ナレーション。男女8種類以上の声から選択可能。",
-                "image": "/images/feature-voice-ai.png",
+                "image": "/images/feature_ai_narration.png",
                 "gradient": "from-green-500 to-teal-600"
             },
             {
                 "id": "video-composition",
                 "title": "④ 動画合成",
                 "description": "Remotionエンジンで画像・音声・字幕を合成。Ken Burns効果やトランジションで動きのある動画に。",
-                "image": "/images/feature-video-composition.png",
+                "image": "/images/step_result_mobile.png",
                 "gradient": "from-orange-500 to-red-600"
             }
         ]
