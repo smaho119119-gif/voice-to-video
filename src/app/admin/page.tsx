@@ -8,8 +8,9 @@ import { formatCostJPY, formatCostUSD, COST_RATES } from "@/lib/cost-tracker";
 import { Button } from "@/components/ui/button";
 import {
     Loader2, ArrowLeft, Users, Video, DollarSign,
-    TrendingUp, BarChart3, RefreshCw
+    TrendingUp, BarChart3, RefreshCw, FileEdit, ExternalLink
 } from "lucide-react";
+import Link from "next/link";
 
 interface UserStats {
     id: string;
@@ -203,6 +204,42 @@ export default function AdminPage() {
                         <p className="text-2xl font-bold text-green-400">{formatCostJPY(stats.thisMonthCost)}</p>
                         <p className="text-xs text-slate-500">{formatCostUSD(stats.thisMonthCost)}</p>
                     </div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Link href="/admin/page-editor">
+                        <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl p-4 border border-purple-500/30 hover:border-purple-400/50 transition-colors cursor-pointer group">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-lg bg-purple-500/30 flex items-center justify-center">
+                                        <FileEdit className="w-5 h-5 text-purple-300" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-white">LP編集</h3>
+                                        <p className="text-xs text-slate-400">ランディングページのコンテンツを編集</p>
+                                    </div>
+                                </div>
+                                <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                            </div>
+                        </div>
+                    </Link>
+                    <Link href="/" target="_blank">
+                        <div className="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl p-4 border border-blue-500/30 hover:border-blue-400/50 transition-colors cursor-pointer group">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-lg bg-blue-500/30 flex items-center justify-center">
+                                        <ExternalLink className="w-5 h-5 text-blue-300" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-white">LP確認</h3>
+                                        <p className="text-xs text-slate-400">公開中のLPを新しいタブで確認</p>
+                                    </div>
+                                </div>
+                                <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                            </div>
+                        </div>
+                    </Link>
                 </div>
 
                 {/* Cost Breakdown */}
