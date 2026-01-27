@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion, useScroll, useTransform, useInView } from "framer-motion";
 import {
     Video, Sparkles, Mic, Image as ImageIcon, Wand2,
@@ -267,6 +268,44 @@ export default function LandingPage() {
 
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
     const [pageContent, setPageContent] = useState<PageContent>(DEFAULT_CONTENT);
+    const router = useRouter();
+
+    // Secret admin access: ESC key pressed 3 times consecutively
+    const escPressCount = useRef(0);
+    const escPressTimer = useRef<NodeJS.Timeout | null>(null);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                escPressCount.current += 1;
+
+                // Reset timer
+                if (escPressTimer.current) {
+                    clearTimeout(escPressTimer.current);
+                }
+
+                // If pressed 3 times, navigate to admin
+                if (escPressCount.current >= 3) {
+                    escPressCount.current = 0;
+                    router.push("/admin/login");
+                    return;
+                }
+
+                // Reset count after 1 second of no ESC press
+                escPressTimer.current = setTimeout(() => {
+                    escPressCount.current = 0;
+                }, 1000);
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+            if (escPressTimer.current) {
+                clearTimeout(escPressTimer.current);
+            }
+        };
+    }, [router]);
 
     // Fetch dynamic content from API
     useEffect(() => {
