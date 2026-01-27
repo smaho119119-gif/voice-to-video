@@ -34,38 +34,60 @@ function AnimatedSection({ children, className = "", delay = 0 }: {
 }
 
 // Feature card with hover animation
-function FeatureCard({ icon: Icon, title, description, delay, image }: {
+function FeatureCard({ icon: Icon, title, description, delay, image, href, gradient }: {
     icon: React.ElementType;
     title: string;
     description: string;
     delay: number;
     image?: string;
+    href?: string;
+    gradient?: string;
 }) {
-    return (
-        <AnimatedSection delay={delay}>
-            <motion.div
-                whileHover={{ scale: 1.05, y: -5 }}
-                className="group relative overflow-hidden p-6 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10 backdrop-blur-sm h-full"
-            >
-                {image && (
-                    <div className="absolute inset-0 opacity-20 group-hover:opacity-30 transition-opacity">
+    const content = (
+        <motion.div
+            whileHover={{ scale: 1.03, y: -5 }}
+            className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10 backdrop-blur-sm h-full cursor-pointer"
+        >
+            {/* Thumbnail area */}
+            <div className={`relative h-32 overflow-hidden ${gradient || "bg-gradient-to-br from-blue-900/30 to-purple-900/30"}`}>
+                {image ? (
+                    <>
                         <Image
                             src={image}
                             alt={title}
                             fill
-                            className="object-cover"
+                            className="object-cover transition-transform duration-500 group-hover:scale-110"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/50 to-transparent" />
+                    </>
+                ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <Icon className="w-16 h-16 text-white/30 group-hover:text-white/50 transition-colors" />
                     </div>
                 )}
-                <div className="relative z-10">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg shadow-purple-500/20">
-                        <Icon className="w-6 h-6 text-white" />
+                <div className="absolute bottom-3 left-3">
+                    <div className={`w-10 h-10 rounded-xl ${gradient || "bg-gradient-to-br from-blue-500 to-purple-600"} flex items-center justify-center shadow-lg`}>
+                        <Icon className="w-5 h-5 text-white" />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">{title}</h3>
-                    <p className="text-slate-400 text-sm leading-relaxed">{description}</p>
                 </div>
-            </motion.div>
+            </div>
+            {/* Content */}
+            <div className="p-5">
+                <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
+                <p className="text-slate-400 text-sm leading-relaxed line-clamp-3">{description}</p>
+                {href && (
+                    <div className="mt-3 flex items-center text-sm text-blue-400 group-hover:text-blue-300 transition-colors">
+                        <span>詳しく見る</span>
+                        <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                )}
+            </div>
+        </motion.div>
+    );
+
+    return (
+        <AnimatedSection delay={delay}>
+            {href ? <Link href={href}>{content}</Link> : content}
         </AnimatedSection>
     );
 }
@@ -269,30 +291,42 @@ export default function LandingPage() {
                         </p>
                     </AnimatedSection>
 
-                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 h-[50vh]">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <FeatureCard
                             icon={FileText}
                             title="① 台本AI"
                             description="Gemini/GPT-4が視聴者を引きつける構成の台本を自動生成。フック→本題→まとめの流れで離脱を防ぎます。"
                             delay={0}
+                            href="/features/script-ai"
+                            gradient="bg-gradient-to-br from-blue-500 to-purple-600"
+                            image="/images/feature-script-ai.png"
                         />
                         <FeatureCard
                             icon={ImageIcon}
                             title="② 画像生成AI"
                             description="各シーンの内容に合わせた画像をDALL-E/Imagen等で自動生成。アニメ風・写実風など画風も選べます。"
                             delay={0.1}
+                            href="/features/image-ai"
+                            gradient="bg-gradient-to-br from-purple-500 to-pink-600"
+                            image="/images/feature-image-ai.png"
                         />
                         <FeatureCard
                             icon={Mic}
                             title="③ 音声合成AI"
                             description="Google/ElevenLabs/Gemini TTSで自然な日本語ナレーション。男女8種類以上の声から選択可能。"
                             delay={0.2}
+                            href="/features/voice-ai"
+                            gradient="bg-gradient-to-br from-green-500 to-teal-600"
+                            image="/images/feature-voice-ai.png"
                         />
                         <FeatureCard
                             icon={Video}
                             title="④ 動画合成"
                             description="Remotionエンジンで画像・音声・字幕を合成。Ken Burns効果やトランジションで動きのある動画に。"
                             delay={0.3}
+                            href="/features/video-composition"
+                            gradient="bg-gradient-to-br from-orange-500 to-red-600"
+                            image="/images/feature-video-composition.png"
                         />
                     </div>
                 </div>
