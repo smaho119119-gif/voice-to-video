@@ -1281,9 +1281,9 @@ export default function Home() {
                             <span className="hidden sm:inline">エディター</span>
                         </Link>
 
-                        {/* Studio link - Remotion Studio runs on port 3000 */}
+                        {/* Studio link - Remotion Studio runs on port 3456 */}
                         <a
-                            href={typeof window !== "undefined" ? `${window.location.protocol}//${window.location.hostname}:3000` : "http://localhost:3000"}
+                            href={typeof window !== "undefined" ? `${window.location.protocol}//${window.location.hostname}:3456` : "http://localhost:3456"}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 px-3 py-1.5 bg-orange-500/20 border border-orange-500/30 rounded-lg text-xs text-orange-300 hover:bg-orange-500/30 transition-colors"
