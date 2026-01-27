@@ -6,7 +6,7 @@ import Image from "next/image";
 import {
     ArrowLeft, Save, Upload, RefreshCw, Check, X,
     FileText, ImageIcon, Mic, Video, Eye, Loader2,
-    ChevronDown, ChevronRight, Pencil
+    ChevronDown, ChevronRight, Pencil, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -346,6 +346,7 @@ export default function PageEditorPage() {
                                         value={content.hero.hero_image}
                                         onUpload={() => triggerImageUpload("hero", "hero_image")}
                                         onChange={(v) => updateField("hero", "hero_image", v)}
+                                        defaultPrompt="A modern SaaS dashboard UI mockup showing video generation interface, floating 3D elements, dark purple and blue gradient background, professional tech design, glowing neon accents, abstract geometric shapes, premium quality"
                                     />
                                 </div>
                             </EditorSection>
@@ -392,6 +393,15 @@ export default function PageEditorPage() {
                                                         value={item.image}
                                                         onUpload={() => triggerImageUpload("features", "items.image", index)}
                                                         onChange={(v) => updateField("features", "items.image", v, index)}
+                                                        defaultPrompt={
+                                                            item.id === "script-ai"
+                                                                ? "AI script writing interface, floating text bubbles and screenplay formatting, dark theme with blue glow, modern tech UI, abstract neural network visualization"
+                                                            : item.id === "image-ai"
+                                                                ? "AI image generation concept art, colorful creative explosion, multiple artistic styles morphing together, dark background with purple and pink gradients, digital art studio visualization"
+                                                            : item.id === "voice-ai"
+                                                                ? "AI voice synthesis visualization, sound waves and audio waveforms, modern podcast recording studio, dark theme with green and teal glow, voice avatar concept"
+                                                            : "Video composition software interface, timeline editor with multiple tracks, video transitions and effects preview, dark theme with orange and red accents, professional editing suite"
+                                                        }
                                                     />
                                                 </div>
                                             );
@@ -440,6 +450,13 @@ export default function PageEditorPage() {
                                                     value={item.image}
                                                     onUpload={() => triggerImageUpload("steps", "items.image", index)}
                                                     onChange={(v) => updateField("steps", "items.image", v, index)}
+                                                    defaultPrompt={
+                                                        item.number === 1
+                                                            ? "Clean input form UI, text input field with microphone icon, dark theme modern interface, minimalist design, blue and purple gradient accents"
+                                                        : item.number === 2
+                                                            ? "AI processing visualization, multiple gears and neural networks working, loading progress indicators, dark background with vibrant glowing elements, abstract automation concept"
+                                                        : "Mobile phone showing vertical video playback, TikTok/YouTube Shorts style, download button highlighted, dark theme UI mockup, success completion state"
+                                                    }
                                                 />
                                             </div>
                                         ))}
@@ -597,35 +614,116 @@ function TextareaField({ label, value, onChange }: {
     );
 }
 
-function ImageField({ label, value, onUpload, onChange }: {
+function ImageField({ label, value, onUpload, onChange, defaultPrompt }: {
     label: string;
     value: string;
     onUpload: () => void;
     onChange: (value: string) => void;
+    defaultPrompt?: string;
 }) {
+    const [showPrompt, setShowPrompt] = useState(false);
+    const [prompt, setPrompt] = useState(defaultPrompt || "");
+    const [generating, setGenerating] = useState(false);
+
+    const generateImage = async () => {
+        if (!prompt.trim()) return;
+        setGenerating(true);
+        try {
+            const res = await fetch("/api/generate-image", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: prompt,
+                    aspectRatio: "16:9",
+                    model: "2.5-flash"
+                })
+            });
+            const data = await res.json();
+            if (data.imageUrl) {
+                onChange(data.imageUrl);
+            }
+        } catch (error) {
+            console.error("Image generation failed:", error);
+        } finally {
+            setGenerating(false);
+        }
+    };
+
     return (
-        <div>
+        <div className="space-y-2">
             <label className="block text-sm text-slate-400 mb-1">{label}</label>
-            <div className="flex gap-3">
+            <div className="flex gap-2">
                 <input
                     type="text"
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
                     placeholder="/images/example.png"
-                    className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 />
                 <Button
                     type="button"
                     onClick={onUpload}
                     variant="outline"
-                    className="gap-2 border-white/20"
+                    size="sm"
+                    className="gap-1 border-white/20 text-xs"
                 >
-                    <Upload className="w-4 h-4" />
-                    アップロード
+                    <Upload className="w-3 h-3" />
+                    UP
+                </Button>
+                <Button
+                    type="button"
+                    onClick={() => setShowPrompt(!showPrompt)}
+                    variant="outline"
+                    size="sm"
+                    className={`gap-1 border-purple-500/30 text-purple-300 hover:bg-purple-500/20 text-xs ${showPrompt ? "bg-purple-500/20" : ""}`}
+                >
+                    <Sparkles className="w-3 h-3" />
+                    AI
                 </Button>
             </div>
+
+            {/* AI Generation Panel */}
+            {showPrompt && (
+                <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/20 space-y-2">
+                    <div className="flex items-center gap-2 text-xs text-purple-300">
+                        <Sparkles className="w-3 h-3" />
+                        <span>AI画像生成プロンプト</span>
+                    </div>
+                    <textarea
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        placeholder="例: A modern tech dashboard UI mockup showing video editing interface, dark theme, purple and blue gradients, professional design"
+                        rows={3}
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm resize-none"
+                    />
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500">Gemini 2.5 Flash で生成</span>
+                        <Button
+                            type="button"
+                            onClick={generateImage}
+                            disabled={generating || !prompt.trim()}
+                            size="sm"
+                            className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-xs"
+                        >
+                            {generating ? (
+                                <>
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    生成中...
+                                </>
+                            ) : (
+                                <>
+                                    <Sparkles className="w-3 h-3" />
+                                    画像を生成
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Preview */}
             {value && (
-                <div className="mt-2 relative w-32 h-20 rounded-lg overflow-hidden bg-white/5 border border-white/10">
+                <div className="mt-2 relative w-40 h-24 rounded-lg overflow-hidden bg-white/5 border border-white/10">
                     <Image
                         src={value}
                         alt={label}
