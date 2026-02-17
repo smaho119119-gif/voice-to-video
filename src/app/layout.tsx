@@ -38,10 +38,10 @@ export const metadata: Metadata = {
     description,
     images: [
       {
-        url: `${siteUrl}/images/hero_ui_mockup.png`,
-        width: 1280,
-        height: 720,
-        alt: "Video AI Generator - AIで動画を自動生成",
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Video AI Generator",
       },
     ],
   },
@@ -49,7 +49,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: siteName,
     description,
-    images: [`${siteUrl}/images/hero_ui_mockup.png`],
+    images: ["/og-image.png"],
   },
   icons: {
     icon: { url: "/icon.svg", type: "image/svg+xml" },
