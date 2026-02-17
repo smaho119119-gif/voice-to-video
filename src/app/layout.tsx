@@ -14,14 +14,70 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteName = "Video AI Generator";
+const siteUrl = "https://voice-to-video.nextcode.ltd";
+const description =
+  "AIを使って動画を自動生成するWebアプリ。テキスト・画像・音声から高品質な動画コンテンツを作成。YouTube Shorts・TikTok・Reelsなど縦型ショート動画の制作を効率化するAI動画生成プラットフォーム。";
+
 export const metadata: Metadata = {
-  title: "Video AI Generator",
-  description: "AIで動画を自動生成するアプリケーション",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: siteName,
+    template: `%s | ${siteName}`,
+  },
+  description,
+  alternates: {
+    canonical: siteUrl,
+  },
+  openGraph: {
+    type: "website",
+    locale: "ja_JP",
+    url: siteUrl,
+    siteName,
+    title: siteName,
+    description,
+    images: [
+      {
+        url: `${siteUrl}/images/hero_ui_mockup.png`,
+        width: 1280,
+        height: 720,
+        alt: "Video AI Generator - AIで動画を自動生成",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteName,
+    description,
+    images: [`${siteUrl}/images/hero_ui_mockup.png`],
+  },
   icons: {
     icon: { url: "/icon.svg", type: "image/svg+xml" },
     shortcut: { url: "/icon.svg", type: "image/svg+xml" },
     apple: { url: "/apple-icon.svg", type: "image/svg+xml" },
   },
+};
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: siteName,
+  url: siteUrl,
+  description,
+  applicationCategory: "MultimediaApplication",
+  operatingSystem: "Web",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "JPY",
+  },
+  featureList: [
+    "AIによる台本自動生成",
+    "画像生成AI連携",
+    "音声合成（TTS）",
+    "動画自動合成（Remotion）",
+    "YouTube Shorts / TikTok / Reels対応",
+  ],
 };
 
 export default function RootLayout({
@@ -35,6 +91,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         <AuthProvider>
           <ToastProvider>
             {children}
